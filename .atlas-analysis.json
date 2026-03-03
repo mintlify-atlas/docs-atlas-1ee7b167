@@ -1,0 +1,129 @@
+{
+  "projectType": "saas",
+  "projectName": "NetPOS",
+  "projectDescription": "Android Point of Sale application for accepting card, QR, and transfer payments with multi-bank support.",
+  "theme": "aspen",
+  "primaryColor": "#1e88e5",
+  "lightColor": "#64b5f6",
+  "darkColor": "#0d47a1",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "features",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "User Guide",
+            "pages": [
+              "guide/authentication",
+              "guide/dashboard",
+              "guide/transactions",
+              "guide/refunds-reprints",
+              "guide/reports"
+            ]
+          },
+          {
+            "group": "Payment Methods",
+            "pages": [
+              "payments/overview",
+              "payments/card-payments",
+              "payments/qr-payments",
+              "payments/pay-by-transfer",
+              "payments/bill-payments",
+              "payments/cash-out"
+            ]
+          },
+          {
+            "group": "Terminal Management",
+            "pages": [
+              "terminal/configuration",
+              "terminal/white-label-setup",
+              "terminal/network-setup",
+              "terminal/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Integration",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "integration/overview",
+              "integration/sdk-setup"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "integration/mqtt-integration",
+              "integration/api-endpoints",
+              "integration/webhooks"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "reference/architecture",
+              "reference/database-schema",
+              "reference/security"
+            ]
+          },
+          {
+            "group": "API",
+            "pages": [
+              "reference/models",
+              "reference/viewmodels",
+              "reference/services"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Card payment processing with EMV support",
+    "QR code payment generation and scanning",
+    "Pay-by-Transfer with virtual accounts",
+    "Bill payments and cash-out services",
+    "Transaction history and reporting",
+    "End-of-day reconciliation",
+    "Multi-bank white-label support",
+    "MQTT real-time notifications",
+    "Offline transaction storage",
+    "Receipt generation and printing"
+  ],
+  "publicApiSurface": [
+    "AuthenticationActivity",
+    "MainActivity",
+    "DashboardFragment",
+    "PurchaseFragment",
+    "QRFragment",
+    "PayByTransferBottomSheetDialogFragment",
+    "BillsFragment",
+    "TransactionDetailsFragment",
+    "RefundFragment",
+    "ReprintFragment",
+    "SettingsFragment",
+    "NetPosTerminalConfig",
+    "StormApiClient",
+    "NetPOSCashService",
+    "QrPaymentService",
+    "PayByTransferService",
+    "NipService",
+    "MqttHelper"
+  ]
+}
