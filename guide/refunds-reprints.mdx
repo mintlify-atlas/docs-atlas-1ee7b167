@@ -1,0 +1,521 @@
+---
+title: Refunds & Reprints
+description: Process transaction refunds and reprint receipts for customer and merchant records in NetPOS
+---
+
+NetPOS provides comprehensive capabilities for handling refunds and reprinting receipts. This guide covers both operations in detail.
+
+## Overview
+
+Refunds and reprints are accessed through the Transactions menu and transaction history screens.
+
+<CardGroup cols={2}>
+  <Card title="Refunds" icon="rotate-left">
+    Reverse a previous transaction and return funds to the customer's card
+  </Card>
+  
+  <Card title="Reprints" icon="print">
+    Generate duplicate receipts for any past transaction
+  </Card>
+</CardGroup>
+
+## Processing Refunds
+
+Refunds allow you to reverse a previous purchase transaction and credit the customer's card.
+
+### When to Use Refunds
+
+- Customer returns purchased goods
+- Service was not delivered as expected
+- Transaction was processed in error
+- Customer was overcharged
+- Product was defective or damaged
+
+<Warning>
+  Refunds can only be processed for approved transactions (response code "00"). Declined transactions cannot be refunded as no funds were debited.
+</Warning>
+
+### Refund Process
+
+<Steps>
+  <Step title="Access transaction history">
+    From the Dashboard:
+    1. Tap **Transactions** tile
+    2. Select **Reprint** (which opens transaction history)
+    
+    Or from the Transactions menu, navigate to the transaction history view.
+  </Step>
+  
+  <Step title="Find the transaction to refund">
+    Locate the original purchase transaction:
+    
+    - Use the **History** tab to browse recent transactions
+    - Use the **Search** tab to find by amount, card number, or date
+    - Tap the transaction to open transaction details
+    
+    <Note>
+      Only approved transactions with response code "00" can be refunded.
+    </Note>
+  </Step>
+  
+  <Step title="Initiate refund">
+    On the Transaction Details screen (`TransactionDetailsFragment.kt`):
+    
+    1. Tap the **REFUND** action button (if visible for the transaction type)
+    2. The system validates that the transaction is eligible for refund
+    
+    Refund eligibility checks:
+    - Transaction was approved (response code "00")
+    - Transaction has not already been refunded
+    - Refund is within the allowed time window (typically 180 days)
+  </Step>
+  
+  <Step title="Read customer card">
+    The card reader dialog appears. The customer must present the **same card** used for the original transaction.
+    
+    <Accordion title="Why the same card?">
+      For security and verification purposes, refunds must be processed to the same card used for the original purchase. This prevents fraud and ensures funds return to the correct customer.
+    </Accordion>
+    
+    Card reading process:
+    - Insert, tap, or swipe the customer's card
+    - System verifies the card matches the original transaction PAN
+    - Customer may need to enter PIN (depends on card and amount)
+  </Step>
+  
+  <Step title="Wait for refund authorization">
+    NetPOS processes the refund:
+    
+    1. Sends refund request to payment gateway
+    2. Routes through NIBSS to card issuer
+    3. Card issuer authorizes the credit
+    4. Funds are credited back to the customer's card
+    
+    A progress dialog shows "Processing refund..." during this time.
+    
+    <Note>
+      Refund processing uses `viewModel.refundTransaction(requireContext())` at `TransactionDetailsFragment.kt:157`.
+    </Note>
+  </Step>
+  
+  <Step title="View refund result">
+    The transaction result dialog appears showing:
+    
+    - **Refund Status**: Approved or Declined
+    - **Refund Amount**: Amount credited to card
+    - **Original Transaction**: Reference to the original purchase
+    - **Refund RRN**: Unique reference for the refund
+    - **Date & Time**: Refund timestamp
+    
+    <Warning>
+      If the refund is declined, note the decline reason. Common reasons include:
+      - Card issuer unavailable
+      - Invalid card (not matching original transaction)
+      - Refund already processed
+      - Technical error
+    </Warning>
+  </Step>
+  
+  <Step title="Print refund receipt">
+    Choose receipt delivery method:
+    
+    - **Print**: Thermal printer produces customer and merchant copies
+    - **Download**: Save as PDF to device
+    - **Share**: Share via email, WhatsApp, SMS, etc.
+    - **SMS**: Send receipt details to customer's phone
+    
+    Always provide the customer with proof of the refund.
+  </Step>
+</Steps>
+
+### Refund Receipt Contents
+
+A refund receipt includes:
+
+- **Transaction Type**: "REFUND" (prominently displayed)
+- **Original Transaction Details**: Original RRN, date, amount
+- **Refund Details**: Refund RRN, date, amount
+- **Card Information**: Masked PAN
+- **Terminal & Merchant Info**: Terminal ID, Merchant ID, business name
+- **Response Code**: "00" for approved refunds
+- **Timestamp**: Date and time of refund processing
+
+### Partial Refunds
+
+<Note>
+  NetPOS currently processes full refunds only. To refund a partial amount, you would need to process a new purchase for the difference amount. Check with your payment processor for partial refund support.
+</Note>
+
+### Refund Time to Settlement
+
+After a successful refund:
+
+- **Immediate**: Refund is authorized and logged
+- **1-3 business days**: Funds typically appear in customer's account
+- **5-10 business days**: Maximum time for most card issuers
+
+Inform customers that while the refund is processed immediately, it may take several days to reflect in their account depending on their bank.
+
+## Reprinting Receipts
+
+Receipt reprinting allows you to generate duplicate receipts for any past transaction.
+
+### When to Reprint
+
+- Customer lost their original receipt
+- Merchant copy was misplaced
+- Thermal print faded over time
+- Printer malfunction during original transaction
+- Customer requests email/digital copy
+
+### Reprint Process
+
+<Steps>
+  <Step title="Access Reprint menu">
+    **Method 1 - From Dashboard:**
+    1. Tap **Transactions** tile
+    2. Select **Reprint** from transaction menu
+    
+    **Method 2 - From Transaction Details:**
+    1. Navigate to any transaction in history
+    2. Open transaction details
+    3. Use reprint action
+    
+    <Note>
+      Some builds (like Wema and Zenith) require a password to access reprint functionality for security. This is configured at `TransactionsFragment.kt:58-67`.
+    </Note>
+  </Step>
+  
+  <Step title="Enter reprint password (if required)">
+    If your build has reprint password protection:
+    
+    1. Password entry dialog appears
+    2. Enter the reprint password (set in Settings)
+    3. Tap **Proceed**
+    
+    If the password is incorrect, you'll see "Password is incorrect" toast message.
+    
+    <Accordion title="Setting/Changing Reprint Password">
+      The reprint password is configured in terminal settings and stored in shared preferences under `PREF_REPRINT_PASSWORD`. Contact your administrator to set or reset this password.
+    </Accordion>
+  </Step>
+  
+  <Step title="Select reprint option">
+    The Reprint screen (`ReprintFragment.kt`) displays options:
+    
+    - **Reprint One Transaction**: Reprint a single transaction (most common)
+    - **Reprint All Transactions**: Bulk reprint (advanced feature)
+    
+    Tap **Reprint One Transaction** to proceed.
+  </Step>
+  
+  <Step title="Find the transaction">
+    The transaction history screen opens with action set to `HISTORY_ACTION_REPRINT`.
+    
+    Browse or search for the transaction:
+    - **History tab**: Scroll through recent transactions
+    - **Search tab**: Search by amount, card, date, or reference number
+    
+    Tap the transaction you want to reprint.
+  </Step>
+  
+  <Step title="View transaction details">
+    The Transaction Details screen opens showing all transaction information.
+    
+    The screen automatically sets `viewModel.setAction(HISTORY_ACTION_REPRINT)` to indicate this is a reprint operation.
+  </Step>
+  
+  <Step title="Choose receipt format">
+    The Print Type dialog appears with options:
+    
+    <Tabs>
+      <Tab title="Customer Copy">
+        Prints a customer receipt:
+        - Header: "CUSTOMER COPY"
+        - All transaction details
+        - No signature line
+        
+        Use this when customer needs a duplicate receipt.
+      </Tab>
+      
+      <Tab title="Merchant Copy">
+        Prints a merchant receipt:
+        - Header: "MERCHANT COPY"
+        - All transaction details
+        - Signature line for customer signature
+        
+        Use this for your records.
+      </Tab>
+      
+      <Tab title="Download">
+        Saves receipt as PDF:
+        - Stored in device Downloads folder
+        - File name format: `Receipt_[RRN]_[Date].pdf`
+        - Can be accessed later from file manager
+        
+        Requires storage permission (prompted on first use).
+      </Tab>
+      
+      <Tab title="Share">
+        Opens share menu to send receipt via:
+        - **Email**: Attach PDF and email to customer
+        - **WhatsApp**: Send PDF via WhatsApp chat
+        - **SMS/MMS**: Send as attachment (if supported)
+        - **Other apps**: Any app that accepts PDF files
+        
+        Receipt is generated as PDF and passed to the selected app.
+      </Tab>
+      
+      <Tab title="Download and Share">
+        Combination action:
+        1. Saves PDF to Downloads folder
+        2. Opens share menu
+        
+        Best when you want to keep a copy and send to customer.
+      </Tab>
+    </Tabs>
+  </Step>
+  
+  <Step title="Print or share receipt">
+    Based on your selection:
+    
+    - **Print**: Thermal printer produces the receipt
+    - **Download**: Success message shows "File downloaded" with path
+    - **Share**: Share dialog appears with available apps
+    
+    For SMS receipts, enter the customer's 11-digit phone number and tap Send.
+  </Step>
+</Steps>
+
+### Reprint Receipt Marking
+
+Reprinted receipts may include:
+- **"REPRINT" watermark**: Indicates this is a duplicate
+- **Original timestamp**: Shows when the original transaction occurred
+- **Reprint timestamp**: Shows when the receipt was reprinted (in some formats)
+
+This helps distinguish reprints from original receipts for accounting purposes.
+
+### Receipt Storage and PDF Generation
+
+When downloading or sharing receipts:
+
+1. **PDF Layout Initialization**: `initViewsForPdfLayout()` populates receipt template with transaction data (`TransactionDetailsFragment.kt:271-275`)
+2. **PDF Creation**: `createPdf()` generates PDF from the layout (`TransactionDetailsFragment.kt:266`)
+3. **Permission Handling**: Storage permission requested if not already granted (`TransactionDetailsFragment.kt:258-268`)
+4. **File Saving**: PDF saved to Downloads with descriptive filename
+5. **Share Intent**: For sharing, PDF file is attached to Android share intent
+
+The process is handled by utility functions in `pdfUtils` package.
+
+### Bulk Reprint (Advanced)
+
+The "Reprint All Transactions" option allows printing multiple receipts:
+
+<Warning>
+  Bulk reprint is an advanced feature and may consume significant thermal paper. Use with caution and ensure you have adequate paper stock.
+</Warning>
+
+Use cases for bulk reprint:
+- End-of-day merchant copies for all transactions
+- Backup receipts for accounting/audit
+- Batch receipt generation for customer service
+
+## SMS Receipts
+
+Both refunds and reprints support SMS receipt delivery.
+
+### SMS Receipt Process
+
+<Steps>
+  <Step title="Select Send Receipt">
+    From the receipt dialog, choose the SMS/Send Receipt option.
+  </Step>
+  
+  <Step title="Enter phone number">
+    Type the customer's 11-digit Nigerian phone number (e.g., 08012345678).
+    
+    Validation:
+    - Must be exactly 11 digits
+    - Format: 0XXXXXXXXXXX
+    
+    Invalid numbers show error: "Please enter a valid phone number"
+  </Step>
+  
+  <Step title="Send SMS">
+    Tap **Send** button. The system:
+    1. Formats transaction details as SMS text
+    2. Calls SMS API (`viewModel.sendSmS()` at `TransactionDetailsFragment.kt:196`)
+    3. Sends SMS to the provided number
+    
+    Progress indicator shows while sending.
+  </Step>
+  
+  <Step title="Confirmation">
+    Success message: "Sent Receipt" (toast notification)
+    
+    The SMS contains:
+    - Transaction type and status
+    - Amount
+    - Masked card number
+    - Date and time
+    - RRN for reference
+    - Merchant information
+  </Step>
+</Steps>
+
+### SMS Receipt Contents
+
+Example SMS format:
+```
+NetPOS Receipt
+Type: PURCHASE
+Status: APPROVED
+Amount: NGN 5,000.00
+Card: ****1234
+Date: 03/03/2026 14:30
+RRN: 123456789012
+[Merchant Name]
+Thank you!
+```
+
+## Printer Error Handling
+
+If printing fails during refund or reprint, the Printer Error dialog appears.
+
+### Common Printer Errors
+
+<AccordionGroup>
+  <Accordion title="Printer Not Connected">
+    **Error**: "Printer not connected" or "Bluetooth printer disconnected"
+    
+    **Solution**:
+    - Check printer is powered on
+    - Verify Bluetooth pairing
+    - Reconnect printer in Settings
+    - Ensure printer is in range
+  </Accordion>
+  
+  <Accordion title="Out of Paper">
+    **Error**: "Printer out of paper" or "No paper detected"
+    
+    **Solution**:
+    - Replace thermal paper roll
+    - Ensure paper is loaded correctly
+    - Check paper feed mechanism
+  </Accordion>
+  
+  <Accordion title="Low Battery">
+    **Error**: "Printer battery low"
+    
+    **Solution**:
+    - Charge the printer
+    - Use while charging if urgent
+    - Replace battery if old
+  </Accordion>
+  
+  <Accordion title="Paper Jam">
+    **Error**: "Paper jam" or "Feed error"
+    
+    **Solution**:
+    - Open printer cover
+    - Remove jammed paper
+    - Reload paper properly
+    - Clean paper feed rollers
+  </Accordion>
+  
+  <Accordion title="Printer Busy">
+    **Error**: "Printer busy" or "Print queue full"
+    
+    **Solution**:
+    - Wait for current print job to finish
+    - Restart printer if stuck
+    - Clear print queue
+  </Accordion>
+</AccordionGroup>
+
+### Printer Error Dialog Options
+
+When a printer error occurs (`TransactionDetailsFragment.kt:238-250`):
+
+- **Error Message**: Describes the specific problem
+- **Send Receipt**: Alternative option to SMS the receipt instead of printing
+- **Dismiss**: Closes the error dialog
+
+The "Send Receipt" option is helpful when the printer cannot be fixed immediately but the customer needs proof of transaction.
+
+## Transaction Action Buttons
+
+On the Transaction Details screen, action buttons appear based on transaction type:
+
+- **REFUND**: For approved purchase transactions
+- **REPRINT**: For all transactions (default action)
+- **Pre-Auth Complete**: For successful pre-authorization transactions
+- **Pre-Auth Refund**: For pre-authorizations that need cancellation
+
+The visible button depends on `viewModel.selectedAction` which is set when navigating to the transaction details.
+
+## Failed Transaction Refunds
+
+<Warning>
+  You cannot refund a declined or failed transaction. If a transaction was declined (response code other than "00"), no funds were debited from the customer's card, so there's nothing to refund.
+</Warning>
+
+If a customer insists a declined transaction was charged:
+
+1. Show them the transaction details with decline code
+2. Advise them to check their bank statement
+3. If their bank shows a debit, it's likely a pending authorization that will be reversed automatically
+4. Contact your payment processor support if issue persists
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Verify Before Refunding" icon="magnifying-glass">
+    Always verify the customer's reason for refund and check your refund policy before processing.
+  </Card>
+  
+  <Card title="Print Both Copies" icon="print">
+    For refunds, print both customer and merchant copies for complete audit trail.
+  </Card>
+  
+  <Card title="Document Refund Reason" icon="file-pen">
+    Keep notes on why refunds were processed for accounting and dispute resolution.
+  </Card>
+  
+  <Card title="Secure Reprint Access" icon="lock">
+    Enable reprint password protection to prevent unauthorized access to transaction history.
+  </Card>
+</CardGroup>
+
+## Tips and Tricks
+
+<AccordionGroup>
+  <Accordion title="Reprint Without Password">
+    If you've forgotten the reprint password, you can access reprints via transaction details from the main transaction history (accessed from Dashboard > Transactions > History) without going through the dedicated Reprint menu.
+  </Accordion>
+  
+  <Accordion title="Saving Paper">
+    Use PDF download and share features instead of printing when customers prefer digital receipts. This saves thermal paper and is more environmentally friendly.
+  </Accordion>
+  
+  <Accordion title="Fast Transaction Lookup">
+    Use the Search tab with the last 4 digits of the card or the transaction amount for quick lookup instead of scrolling through history.
+  </Accordion>
+  
+  <Accordion title="Refund Disputes">
+    If a customer disputes that a refund was processed, show them the refund transaction in history with the RRN. They can use this reference with their bank.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Generate Reports" icon="chart-line" href="/guide/reports">
+    Learn about End-of-Day reports and reconciliation
+  </Card>
+  
+  <Card title="Process Transactions" icon="credit-card" href="/guide/transactions">
+    Go back to transaction processing guide
+  </Card>
+</CardGroup>

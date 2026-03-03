@@ -1,0 +1,160 @@
+---
+title: Payment Methods Overview
+description: Complete guide to all payment methods available in NetPOS for Android merchants
+---
+
+NetPOS is a comprehensive Android POS application that supports multiple payment methods to help merchants process transactions seamlessly. Each payment method is designed to cater to different customer preferences and use cases.
+
+## Available Payment Methods
+
+NetPOS supports the following payment methods:
+
+<CardGroup cols={2}>
+  <Card title="Card Payments" icon="credit-card" href="/payments/card-payments">
+    EMV chip and contactless card processing with multi-currency support
+  </Card>
+  
+  <Card title="QR Payments" icon="qrcode" href="/payments/qr-payments">
+    Generate and scan QR codes for contactless payments via multiple providers
+  </Card>
+  
+  <Card title="Pay-by-Transfer" icon="building-columns" href="/payments/pay-by-transfer">
+    Accept payments via bank transfers using virtual account numbers
+  </Card>
+  
+  <Card title="Bill Payments" icon="receipt" href="/payments/bill-payments">
+    Process utility bills including electricity, cable TV, airtime, and internet
+  </Card>
+</CardGroup>
+
+## Payment Processing Flow
+
+All payment methods in NetPOS follow a consistent workflow:
+
+<Steps>
+  <Step title="Amount Entry">
+    Enter the transaction amount and select the appropriate currency (NGN, USD, EUR, GBP, etc.)
+  </Step>
+  
+  <Step title="Payment Method Selection">
+    Choose the payment method based on customer preference
+  </Step>
+  
+  <Step title="Transaction Processing">
+    Complete the transaction using the selected payment method
+  </Step>
+  
+  <Step title="Receipt Generation">
+    Generate and share transaction receipts via SMS or print
+  </Step>
+</Steps>
+
+## Multi-Currency Support
+
+NetPOS supports transactions in multiple currencies:
+
+- **NGN** - Nigerian Naira
+- **USD** - US Dollar
+- **EUR** - Euro
+- **GBP** - British Pound
+- **CNY** - Chinese Yuan
+- **JPY** - Japanese Yen
+
+<Note>
+Currency selection is available during the payment initiation process. The selected currency is passed to the payment gateway for processing.
+</Note>
+
+## Transaction Authentication
+
+All payment transactions include merchant authentication:
+
+| Parameter | Description | Source |
+|-----------|-------------|--------|
+| Terminal ID | Unique terminal identifier | `user.terminal_id` |
+| Merchant ID | Merchant identifier | `user.merchantId` |
+| NetPlus Pay MID | NetPlus Pay merchant ID | `user.netplusPayMid` |
+| NetPlus ID | NetPlus identifier | `user.netplus_id` |
+| Business Name | Merchant business name | `user.business_name` |
+
+## Common Payment Features
+
+### Transaction Validation
+
+Before processing any payment, NetPOS validates:
+
+- Amount is not empty and is a valid number
+- Currency is selected (for card payments)
+- Merchant credentials are configured
+- Network connectivity is available
+
+### Error Handling
+
+NetPOS provides clear error messages for common scenarios:
+
+<Warning>
+- **"Please enter amount"** - Amount field is empty
+- **"Select currency"** - Currency not selected for card payments
+- **"Network error"** - Connection issues during processing
+- **"Transaction failed"** - Payment processing error
+</Warning>
+
+### Receipt Options
+
+After successful payment, merchants can:
+
+- **Print Receipt** - Print directly from the POS device
+- **Send via SMS** - Share receipt to customer's phone number
+- **View Transaction** - Access full transaction details
+
+## Default Configuration
+
+### Contactless Transaction Email
+
+For contactless transactions (card and QR payments), NetPOS uses a default email:
+
+```kotlin
+CONTACTLESS_TRANSACTION_DEFAULT_EMAIL
+```
+
+This email is automatically included in payment requests for tracking and reconciliation purposes.
+
+### Customer Information
+
+For anonymous transactions, NetPOS uses the default customer name:
+
+```kotlin
+val CUSTOMER = "Customer"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Card Payments" icon="credit-card" href="/payments/card-payments">
+    Learn how to process EMV card payments
+  </Card>
+  
+  <Card title="QR Payments" icon="qrcode" href="/payments/qr-payments">
+    Generate and scan QR codes for payment
+  </Card>
+  
+  <Card title="Pay-by-Transfer" icon="building-columns" href="/payments/pay-by-transfer">
+    Set up virtual account payments
+  </Card>
+  
+  <Card title="Bill Payments" icon="receipt" href="/payments/bill-payments">
+    Process utility and service bills
+  </Card>
+</CardGroup>
+
+## Integration Requirements
+
+To enable payment processing, ensure:
+
+1. **User Authentication** - Merchant must be logged in with valid credentials
+2. **Terminal Configuration** - Terminal ID and merchant IDs properly configured
+3. **Network Access** - Active internet connection for payment gateway communication
+4. **Permissions** - Required Android permissions granted (camera for QR scanning, etc.)
+
+<Info>
+All payment methods are integrated through NetPOS's centralized payment gateway, ensuring consistent security and compliance across all transaction types.
+</Info>

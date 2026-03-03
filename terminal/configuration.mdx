@@ -1,0 +1,275 @@
+---
+title: Terminal Configuration
+description: Configure and initialize NetPOS terminals with NIBSS parameters
+---
+
+## Overview
+
+NetPOS terminals require proper configuration to communicate with the NIBSS (Nigeria Inter-Bank Settlement System) network and process transactions. This guide covers the complete terminal configuration process.
+
+## Configuration Parameters
+
+The terminal configuration system manages critical connection and security parameters stored in the `ConfigurationData` model.
+
+### Core Configuration Fields
+
+<ParamField path="ip" type="string" required>
+  NIBSS server IP address. Production default: `196.6.103.18`
+</ParamField>
+
+<ParamField path="port" type="string" required>
+  NIBSS server port. Production default: `4016`
+</ParamField>
+
+<ParamField path="terminalId" type="string" required>
+  Unique terminal identifier assigned by NIBSS. Default: `2057H63U`
+</ParamField>
+
+<ParamField path="key1" type="string" required>
+  First component of the host base key for encryption
+</ParamField>
+
+<ParamField path="key2" type="string" required>
+  Second component of the host base key for encryption
+</ParamField>
+
+## Configuration Process
+
+<Steps>
+  <Step title="Initial Configuration">
+    The terminal automatically initializes on first launch using the `NetPosTerminalConfig.init()` method.
+
+    ```kotlin
+    NetPosTerminalConfig.init(
+        context = context,
+        configureSilently = false
+    )
+    ```
+
+    <Note>
+      The configuration process runs automatically when the app starts. Manual configuration is only needed for troubleshooting.
+    </Note>
+  </Step>
+
+  <Step title="Download NIBSS Keys">
+    The terminal connects to NIBSS to download cryptographic keys:
+
+    - **Session Keys**: Temporary keys for secure communication
+    - **PIN Keys (TPK)**: Terminal PIN Key for card PIN encryption
+    - **Master Keys**: Long-term encryption keys
+
+    Keys are downloaded via the `downloadNibssKeys()` method and stored securely.
+  </Step>
+
+  <Step title="Download Terminal Parameters">
+    After key exchange, the terminal downloads operational parameters:
+
+    ```kotlin
+    terminalConfigurator.downloadTerminalParameters(
+        context,
+        terminalId,
+        sessionKey,
+        deviceSerial
+    )
+    ```
+
+    Parameters include transaction limits, supported card types, and merchant settings.
+  </Step>
+
+  <Step title="Configuration Validation">
+    The system validates the configuration and stores it locally:
+
+    - Configuration data is saved to `SharedPreferences`
+    - TPK key is written to secure hardware storage
+    - Configuration timestamp is recorded
+    - Status broadcast is sent to the application
+  </Step>
+</Steps>
+
+## Configuration Modes
+
+### Silent Configuration
+
+For background updates without UI feedback:
+
+```kotlin
+NetPosTerminalConfig.init(
+    context = context,
+    configureSilently = true
+)
+```
+
+### Interactive Configuration
+
+With UI status updates and user feedback:
+
+```kotlin
+NetPosTerminalConfig.init(
+    context = context,
+    configureSilently = false
+)
+```
+
+## Call Home Protocol
+
+Terminals perform a daily "call home" to verify configuration validity:
+
+<Accordion title="How Call Home Works">
+  The call home process:
+
+  1. Checks if configuration was done today using `LAST_POS_CONFIGURATION_TIME`
+  2. If not today, performs full reconfiguration
+  3. If today, sends lightweight validation request to NIBSS
+  4. On success (`responseCode = "00"`), continues normal operation
+  5. On failure, triggers full reconfiguration
+
+  ```kotlin
+  terminalConfigurator.nibssCallHome(
+      context,
+      terminalId,
+      clearSessionKey,
+      deviceSerial
+  )
+  ```
+</Accordion>
+
+## Configuration Status
+
+The configuration process uses status codes to track progress:
+
+| Status | Meaning |
+|--------|----------|
+| `-99` | Reset/Idle state |
+| `0` | Configuration started |
+| `1` | Configuration successful |
+| `-1` | Configuration failed |
+
+### Monitoring Configuration Status
+
+Listen for configuration broadcasts:
+
+```kotlin
+LocalBroadcastManager.getInstance(context)
+    .registerReceiver(object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val status = intent.getIntExtra(CONFIGURATION_STATUS, -99)
+            when (status) {
+                1 -> // Configuration successful
+                -1 -> // Configuration failed
+                0 -> // Configuration in progress
+            }
+        }
+    }, IntentFilter(CONFIGURATION_ACTION))
+```
+
+<Note>
+  The broadcast action is `com.woleapp.netpos.TERMINAL_CONFIGURATION`
+</Note>
+
+## Storage Locations
+
+Configuration data is persisted in multiple locations:
+
+<AccordionGroup>
+  <Accordion title="SharedPreferences Keys">
+    - `PREF_KEYHOLDER`: Encrypted key holder with session and PIN keys
+    - `PREF_CONFIG_DATA`: Terminal configuration parameters
+    - `LAST_POS_CONFIGURATION_TIME`: Timestamp of last successful configuration
+    - `CLEAR_PIN_KEY`: Decrypted PIN key for hardware storage
+    - `PREF_USE_STORM_TERMINAL_ID`: Flag to use Storm-assigned terminal ID
+  </Accordion>
+
+  <Accordion title="Hardware Storage">
+    - **TPK Index**: Secure storage index for Terminal PIN Key
+    - **Device Serial**: Retrieved via `NetPosSdk.getDeviceSerial()`
+    - Keys are written using `NetPosSdk.writeTpkKey()` to secure hardware
+  </Accordion>
+</AccordionGroup>
+
+## Terminal ID Management
+
+<Warning>
+  Always use the terminal ID from your logged-in user account. The default terminal ID is for testing only.
+</Warning>
+
+The terminal ID is retrieved from the current user:
+
+```kotlin
+val terminalId = Singletons.getCurrentlyLoggedInUser()?.terminal_id
+```
+
+### Using Storm Terminal ID
+
+NetPOS can switch between NIBSS and Storm-assigned terminal IDs:
+
+```kotlin
+// Enable Storm terminal ID
+Singletons.setUseStormTid(true)
+
+// Check current setting
+val usingStormId = useStormTerminalId()
+```
+
+## Encryption Keys
+
+NetPOS uses different key sets based on environment:
+
+### Production Keys (POSVAS)
+
+```kotlin
+key1 = "9BF76D3E13ADD67A51549B7C3EB0E3AD"
+key2 = "A4BAEC5E31BFD913919262C7A7A76D52"
+```
+
+### Test Keys
+
+```kotlin
+key1 = "5D25072F04832A2329D93E4F91BA23A2"
+key2 = "86CBCDE3B0A22354853E04521686863D"
+```
+
+<Warning>
+  Never use test keys in production environments. Keys are set automatically based on build configuration.
+</Warning>
+
+## Connection Settings
+
+Connection to NIBSS uses SSL/TLS encryption:
+
+```kotlin
+ConnectionData(
+    ipAddress = "196.6.103.18",
+    ipPort = 4016,
+    isSSL = true
+)
+```
+
+### Network Requirements
+
+- **Protocol**: ISO 8583 over SSL/TLS
+- **Timeout**: Configurable per transaction type
+- **Retry Logic**: Automatic retry on network failures
+- **Firewall**: Allow outbound connections to NIBSS IP on specified port
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Daily Configuration" icon="calendar-check">
+    Allow automatic daily call home to keep terminal updated
+  </Card>
+  <Card title="Secure Storage" icon="lock">
+    Never log or expose encryption keys in production
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation">
+    Monitor configuration status and handle failures gracefully
+  </Card>
+  <Card title="Network Stability" icon="wifi">
+    Ensure stable network connection during configuration
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [Network Setup](/terminal/network-setup) - Configure network connectivity
+- [Troubleshooting](/terminal/troubleshooting) - Resolve configuration issues
+- [White-Label Setup](/terminal/white-label-setup) - Bank-specific configurations

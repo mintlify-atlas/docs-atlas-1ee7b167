@@ -1,0 +1,659 @@
+---
+title: Bill Payments
+description: Process utility bills including electricity, cable TV, airtime, data, and internet subscriptions
+---
+
+NetPOS provides comprehensive bill payment services, allowing merchants to process utility bills for customers. The system supports electricity, cable TV, airtime, mobile data, and internet subscriptions.
+
+## Supported Bill Categories
+
+<CardGroup cols={2}>
+  <Card title="Cable TV" icon="tv">
+    DSTV, GOTV, and StarTimes subscriptions with multiple package options
+  </Card>
+  
+  <Card title="Electricity" icon="bolt">
+    Prepaid and postpaid electricity bills from major providers
+  </Card>
+  
+  <Card title="Airtime & Data" icon="mobile">
+    Mobile airtime and data bundles for all Nigerian networks
+  </Card>
+  
+  <Card title="Internet" icon="wifi">
+    Internet subscriptions for Smile and Spectranet
+  </Card>
+</CardGroup>
+
+## Bill Payment Flow
+
+<Steps>
+  <Step title="Select Service Category">
+    Choose from Cable TV, Power, Airtime & Data, or Internet
+  </Step>
+  
+  <Step title="Configure Bill Details">
+    Select provider, package, and enter customer information
+  </Step>
+  
+  <Step title="Validate Bill">
+    System validates customer account and displays bill details
+  </Step>
+  
+  <Step title="Process Payment">
+    Insert customer's card for payment processing
+  </Step>
+  
+  <Step title="Complete Transaction">
+    Receive confirmation and generate receipt with token (if applicable)
+  </Step>
+</Steps>
+
+## Implementation
+
+### BillsFragment
+
+The main bills fragment displays available services:
+
+```kotlin BillsFragment.kt
+class BillsFragment : BaseFragment() {
+    private lateinit var adapter: ServiceAdapter
+    private lateinit var binding: FragmentTransactionsBinding
+    
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        binding = FragmentTransactionsBinding.inflate(inflater, container, false)
+        binding.rvTransactionsHeader.text = getString(R.string.bills)
+        adapter = ServiceAdapter {
+            addFragmentWithoutRemove(UtilitiesPaymentFragment.newInstance(it.id))
+        }
+        return binding.root
+    }
+    
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        binding.rvTransactions.layoutManager = GridLayoutManager(context, 2)
+        binding.rvTransactions.adapter = adapter
+        setService()
+    }
+    
+    private fun setService() {
+        val listOfService = ArrayList<Service>()
+            .apply {
+                add(Service(0, "Cable TV", R.drawable.ic_television))
+                add(Service(1, "Power", R.drawable.ic_power))
+                add(Service(2, "Airtime & Data", R.drawable.ic_airtime_data))
+                add(Service(3, "Internet", R.drawable.ic_globe))
+            }
+        adapter.submitList(listOfService)
+    }
+}
+```
+
+## Cable TV Bills
+
+### Supported Providers
+
+<Tabs>
+  <Tab title="DSTV">
+    - DStv Premium
+    - DStv Compact Plus
+    - DStv Compact
+    - DStv Confam
+    - DStv Yanga
+    - DStv Padi
+  </Tab>
+  
+  <Tab title="GOTV">
+    - GOtv Supa
+    - GOtv Max
+    - GOtv Jolli
+    - GOtv Jinja
+    - GOtv Lite
+  </Tab>
+  
+  <Tab title="StarTimes">
+    - Daily packages
+    - Weekly packages
+    - Monthly packages
+  </Tab>
+</Tabs>
+
+### Cable TV Implementation
+
+```kotlin UtilitiesPaymentFragment.kt
+private fun getCableTvView(inflater: LayoutInflater, container: ViewGroup?): View {
+    viewModel.setUtilityService("pay_bill")
+    viewModel.setUtilityBillType("TV")
+    viewModel.setUtilityServiceType("cable_tv")
+    
+    cableBinding = LayoutCableTvBinding.inflate(inflater, container, false)
+    cableBinding.viewmodel = viewModel
+    cableBinding.lifecycleOwner = viewLifecycleOwner
+    
+    val cableTvBiller = DataGenerator.generateBillers()
+        .filter { it.service_type == "TV" && it.status == "active" }
+    val cableTvCategorySpinnerAdapter = ServicesSpinnerAdapter(
+        requireContext(),
+        cableTvBiller.map { it.biller_name },
+        cableTvBiller.map { it.imageUrl }
+    )
+    
+    val plans: Biller.BillerPlans = DataGenerator.getBillerPlans(context)
+    val dstvPlans = plans.multichoicePlans.filter { !it.productCode.startsWith("GO") }
+    val gotvPlans = plans.multichoicePlans.filter { it.productCode.startsWith("GO") }
+    val starTimesPlan = plans.startTimesPlans
+    
+    var selectedCategory = 0
+    cableBinding.selectCableTvCategory.adapter = cableTvCategorySpinnerAdapter
+    cableBinding.selectCableTvCategory.onItemSelectedListener =
+        object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                selectedCategory = position
+                val tvPackageAdapter = when (position) {
+                    0 -> {
+                        viewModel.setUtilityProvider("DSTV")
+                        ServicesSpinnerAdapter(context!!, dstvPlans.map { it.product })
+                    }
+                    1 -> {
+                        viewModel.setUtilityProvider("GOTV")
+                        ServicesSpinnerAdapter(context!!, gotvPlans.map { it.product })
+                    }
+                    2 -> {
+                        viewModel.setUtilityProvider("STARTIMES")
+                        ServicesSpinnerAdapter(context!!, starTimesPlan.map { it.plan })
+                    }
+                    else -> ServicesSpinnerAdapter(context!!, ArrayList())
+                }
+                cableBinding.selectCableTvPackage.adapter = tvPackageAdapter
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    
+    return cableBinding.root
+}
+```
+
+### Package Selection
+
+```kotlin
+cableBinding.selectCableTvPackage.onItemSelectedListener =
+    object : AdapterView.OnItemSelectedListener {
+        override fun onItemSelected(
+            parent: AdapterView<*>?,
+            view: View?,
+            position: Int,
+            id: Long
+        ) {
+            var feeToPay = when (selectedCategory) {
+                0 -> {
+                    viewModel.setUtilityPackage(dstvPlans[position].product)
+                    cableBinding.planValidityOptions.visibility = View.GONE
+                    dstvPlans[position].newPrice
+                }
+                1 -> {
+                    viewModel.setUtilityPackage(gotvPlans[position].product)
+                    cableBinding.planValidityOptions.visibility = View.GONE
+                    gotvPlans[position].newPrice
+                }
+                2 -> {
+                    cableBinding.planValidityOptions.visibility = View.VISIBLE
+                    cableBinding.planValidityOptions.check(-1)
+                    0
+                }
+                else -> 0
+            }
+            cableBinding.priceTextbox.setText(feeToPay.toString())
+        }
+        override fun onNothingSelected(parent: AdapterView<*>?) {}
+    }
+```
+
+## Electricity Bills
+
+### Meter Types
+
+- **Prepaid** - Load electricity units in advance
+- **Postpaid** - Pay for consumed electricity units
+
+### Supported Providers
+
+- Eko Electricity (EKEDC)
+- Ikeja Electric (IKEDC)
+- Abuja Electricity (AEDC)
+- Port Harcourt Electricity (PHED)
+- Ibadan Electricity (IBEDC)
+- Kaduna Electric (KAEDCO)
+- And more...
+
+### Electricity Bill Implementation
+
+```kotlin
+private fun getElectricityPageView(inflater: LayoutInflater, container: ViewGroup?): View {
+    viewModel.setUtilityService("pay_bill")
+    viewModel.setUtilityBillType("POWER")
+    viewModel.setUtilityServiceType("electricity")
+    
+    val powerCategorySpinnerAdapter = ServicesSpinnerAdapter(
+        requireActivity().baseContext, 
+        listOf("Electricity")
+    )
+    val electricityBillers = DataGenerator.electricityBillersList()
+    val productsSpinnerAdapter = ServicesSpinnerAdapter(
+        requireContext(),
+        electricityBillers.map { it.billerName },
+        electricityBillers.map { it.imageUrl }
+    )
+    val meterTypeSpinnerAdapter = ServicesSpinnerAdapter(
+        requireContext(), 
+        listOf("prepaid", "postpaid")
+    )
+    
+    binding = LayoutPowerOrElectricityBinding.inflate(inflater, container, false)
+    binding.viewmodel = viewModel
+    binding.lifecycleOwner = viewLifecycleOwner
+    binding.meterType.adapter = meterTypeSpinnerAdapter
+    binding.productsSpinner.adapter = productsSpinnerAdapter
+    binding.selectACategory.adapter = powerCategorySpinnerAdapter
+    
+    var selected = 0
+    binding.productsSpinner.onItemSelectedListener =
+        object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                selected = position
+                binding.meterType.setSelection(0)
+                viewModel.setUtilityProvider(electricityBillers[selected].prepaidCode)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        
+    binding.meterType.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        override fun onItemSelected(
+            parent: AdapterView<*>?,
+            view: View?,
+            position: Int,
+            id: Long
+        ) {
+            when (position) {
+                0 -> {
+                    viewModel.setUtilityProvider(electricityBillers[selected].prepaidCode)
+                    viewModel.setUtilityPackage("Prepaid")
+                }
+                1 -> {
+                    viewModel.setUtilityProvider(electricityBillers[selected].postpaidCode)
+                    viewModel.setUtilityPackage("Postpaid")
+                }
+            }
+        }
+        override fun onNothingSelected(parent: AdapterView<*>?) {}
+    }
+    
+    return binding.root
+}
+```
+
+## Airtime & Data
+
+### Supported Networks
+
+<CardGroup cols={4}>
+  <Card title="MTN" icon="mobile">
+    Airtime and data bundles
+  </Card>
+  <Card title="Glo" icon="mobile">
+    Airtime and data bundles
+  </Card>
+  <Card title="Airtel" icon="mobile">
+    Airtime and data bundles
+  </Card>
+  <Card title="9mobile" icon="mobile">
+    Airtime and data bundles
+  </Card>
+</CardGroup>
+
+### Airtime & Data Implementation
+
+```kotlin
+private fun getAirtimePageView(inflater: LayoutInflater, container: ViewGroup?): View {
+    viewModel.setUtilityService("vtu")
+    viewModel.setUtilityPackage("Airtime")
+    viewModel.setUtilityBillType("Airtime")
+    
+    airtimeOrDataBinding = LayoutAirtimeOrDataBinding.inflate(inflater, container, false)
+    airtimeOrDataBinding.viewmodel = viewModel
+    airtimeOrDataBinding.lifecycleOwner = viewLifecycleOwner
+    
+    val dataOrAirtimeSpinnerAdapter = ServicesSpinnerAdapter(
+        requireContext(), 
+        listOf("Airtime", "Mobile Data")
+    )
+    val mobileOperatorsBillers = DataGenerator.generateBillers().filter {
+        it.service_type == "Airtime"
+    }
+    val selectNetworkSpinnerAdapter = ServicesSpinnerAdapter(
+        requireContext(),
+        mobileOperatorsBillers.map { it.biller_code },
+        mobileOperatorsBillers.map { it.imageUrl }
+    )
+    val dataPlanList = DataGenerator.getServiceProviderPlans(context)
+    
+    airtimeOrDataBinding.dataOrAirtimeSpinner.adapter = dataOrAirtimeSpinnerAdapter
+    airtimeOrDataBinding.selectNetworkSpinner.adapter = selectNetworkSpinnerAdapter
+    
+    return airtimeOrDataBinding.root
+}
+```
+
+### Data Bundle Selection
+
+```kotlin
+airtimeOrDataBinding.selectDataBundleSpinner.onItemSelectedListener =
+    object : AdapterView.OnItemSelectedListener {
+        override fun onItemSelected(
+            parent: AdapterView<*>?,
+            view: View?,
+            position: Int,
+            id: Long
+        ) {
+            viewModel.setUtilityPackage(
+                "${dataPlanList[selectedNetwork][position].data} - " +
+                "${dataPlanList[selectedNetwork][position].duration}"
+            )
+            airtimeOrDataBinding.priceTextbox.setText(
+                dataPlanList[selectedNetwork][position].price
+            )
+        }
+        override fun onNothingSelected(parent: AdapterView<*>?) {}
+    }
+```
+
+### Airtime/Data Toggle
+
+```kotlin
+airtimeOrDataBinding.dataOrAirtimeSpinner.onItemSelectedListener =
+    object : AdapterView.OnItemSelectedListener {
+        override fun onItemSelected(
+            parent: AdapterView<*>?,
+            view: View?,
+            position: Int,
+            id: Long
+        ) {
+            val visibility = when (position) {
+                0 -> {
+                    viewModel.setUtilityPackage("Airtime")
+                    viewModel.setUtilityBillType("Airtime")
+                    airtimeOrDataBinding.priceTextbox.isEnabled = true
+                    View.GONE
+                }
+                1 -> {
+                    airtimeOrDataBinding.priceTextbox.isEnabled = false
+                    View.VISIBLE
+                }
+                else -> View.GONE
+            }
+            airtimeOrDataBinding.selectDataBundleSpinner.visibility = visibility
+            airtimeOrDataBinding.selectDataBundleSpinnerIcon.visibility = visibility
+        }
+        override fun onNothingSelected(parent: AdapterView<*>?) {}
+    }
+```
+
+## Internet Subscriptions
+
+### Supported Providers
+
+<Tabs>
+  <Tab title="Smile">
+    - SmileVoice packages
+    - Data bundles
+    - Unlimited plans
+  </Tab>
+  
+  <Tab title="Spectranet">
+    - Bronze plans
+    - Silver plans
+    - Gold plans
+    - Platinum plans
+  </Tab>
+</Tabs>
+
+### Internet Implementation
+
+```kotlin
+private fun getInternetPageView(inflater: LayoutInflater, container: ViewGroup?): View {
+    viewModel.setUtilityService("pay_bill")
+    viewModel.setUtilityBillType("Internet")
+    
+    internetSubscriptionBinding = LayoutInternetSubscriptionBinding.inflate(
+        inflater, 
+        container, 
+        false
+    )
+    internetSubscriptionBinding.viewmodel = viewModel
+    internetSubscriptionBinding.lifecycleOwner = viewLifecycleOwner
+    internetSubscriptionBinding.priceTextbox.isEnabled = false
+    
+    val internetBiller = DataGenerator.generateBillers().filter {
+        it.service_type == "Internet" && it.status == "active"
+    }
+    val internetProviderSpinnerAdapter = ServicesSpinnerAdapter(
+        requireContext(),
+        internetBiller.map { it.biller_name },
+        internetBiller.map { it.imageUrl }
+    )
+    
+    internetSubscriptionBinding.providerSpinner.adapter = internetProviderSpinnerAdapter
+    
+    val billerPlans = DataGenerator.getBillerPlans(requireContext())
+    val smileInternetList = billerPlans.smileInternetList
+    val spectranetInternetList = billerPlans.spectranetInternetList
+    
+    var selected = 0
+    internetSubscriptionBinding.providerSpinner.onItemSelectedListener =
+        object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                selected = position
+                val packageSpinnerAdapter = when (position) {
+                    0 -> {
+                        viewModel.setUtilityProvider("SMILE")
+                        ServicesSpinnerAdapter(
+                            context!!,
+                            smileInternetList.map { it.bundleName }
+                        )
+                    }
+                    1 -> {
+                        viewModel.setUtilityProvider("SPECTRANET")
+                        ServicesSpinnerAdapter(
+                            context!!,
+                            spectranetInternetList.map { it.planName }
+                        )
+                    }
+                    else -> ServicesSpinnerAdapter(context!!, ArrayList())
+                }
+                internetSubscriptionBinding.packageSpinner.adapter = packageSpinnerAdapter
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    
+    return internetSubscriptionBinding.root
+}
+```
+
+## Bill Validation
+
+Before processing payment, bills are validated:
+
+```kotlin
+viewModel.validateBillResponse.observe(viewLifecycleOwner, { event ->
+    event.getContentIfNotHandled()?.let {
+        dismissProgressBar()
+        layoutVerifyUtilityPaymentBinding.billResponse = it
+        verifyBillDialog!!.show()
+    }
+})
+```
+
+### Validation Bottom Sheet
+
+The validation dialog displays:
+
+- Customer name
+- Account/meter/smartcard number
+- Bill amount
+- Service provider
+- Package details
+
+## Payment Processing
+
+### Card Payment Integration
+
+Bills are paid using card payment:
+
+```kotlin
+viewModel.initiateBillsPayment.observe(viewLifecycleOwner) { event ->
+    event.getContentIfNotHandled()?.let {
+        showCardDialog(
+            requireActivity(),
+            viewLifecycleOwner,
+            1000,
+            0L
+        ).observe(viewLifecycleOwner) { cardEvent ->
+            cardEvent.getContentIfNotHandled()?.let {
+                it.cardData?.let { _ ->
+                    viewModel.setCardScheme(it.cardScheme!!)
+                    viewModel.setCustomerName(it.customerName ?: "Customer")
+                    viewModel.setAccountType(it.accountType!!)
+                    viewModel.cardData = it.cardData
+                    viewModel.makePayment(requireContext())
+                }
+            }
+        }
+    }
+}
+```
+
+## Receipt Generation
+
+### Token Display
+
+For electricity and some cable TV packages, a token is generated:
+
+```kotlin
+viewModel.result.observe(viewLifecycleOwner, { event ->
+    event.getContentIfNotHandled()?.let {
+        dismissProgressBar()
+        when (it) {
+            is SuccessNetworkResponse -> {
+                val data = it.data
+                if (!data!!.token.isNullOrEmpty()) {
+                    dialogUtilitiesBinding.copy.visibility = View.VISIBLE
+                    dialogUtilitiesBinding.copy.setOnClickListener {
+                        copyTextToClipboard(
+                            requireContext(),
+                            "token",
+                            data.token!!
+                        )
+                        Toast.makeText(
+                            requireContext(),
+                            "Token copied to clipboard",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    copyTextToClipboard(requireContext(), "token", data.token!!)
+                }
+            }
+        }
+    }
+})
+```
+
+### SMS Receipt
+
+```kotlin
+viewModel.showPrintDialog.observe(viewLifecycleOwner) { event ->
+    event.getContentIfNotHandled()?.let {
+        receiptDialog.apply {
+            receiptDialogBinding.transactionContent.text = it
+            show()
+        }
+    }
+}
+
+receiptDialogBinding.sendButton.setOnClickListener {
+    if (receiptDialogBinding.telephone.text.toString().length != 11) {
+        Toast.makeText(
+            requireContext(),
+            "Please enter a valid phone number",
+            Toast.LENGTH_LONG
+        ).show()
+        return@setOnClickListener
+    }
+    viewModel.sendSmS(receiptDialogBinding.telephone.text.toString())
+    progress.visibility = View.VISIBLE
+    sendButton.isEnabled = false
+}
+```
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Validation Failed">
+    **Error:** Invalid customer account/meter/smartcard number
+    
+    **Solution:** Verify the account number and retry
+  </Accordion>
+  
+  <Accordion title="Payment Failed">
+    **Error:** Card payment processing failed
+    
+    **Solution:** Check card details and retry, or use different payment method
+  </Accordion>
+  
+  <Accordion title="Token Generation Failed">
+    **Error:** Token not received after successful payment
+    
+    **Solution:** Contact support with transaction reference for manual token generation
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+Ensure bills token is valid before processing payments. The system automatically refreshes tokens when needed.
+</Warning>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Validate First" icon="circle-check">
+    Always validate customer account before processing payment
+  </Card>
+  
+  <Card title="Token Storage" icon="circle-check">
+    Store and display tokens clearly for electricity and cable TV
+  </Card>
+  
+  <Card title="Receipt Sharing" icon="circle-check">
+    Provide multiple receipt options (print, SMS, copy)
+  </Card>
+  
+  <Card title="Error Recovery" icon="circle-check">
+    Implement retry mechanisms for failed transactions
+  </Card>
+</CardGroup>

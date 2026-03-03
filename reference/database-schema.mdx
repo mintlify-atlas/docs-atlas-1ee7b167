@@ -1,0 +1,401 @@
+---
+title: Database Schema
+description: Complete Room database schema, entities, DAOs, and data persistence layer for NetPOS
+---
+
+## Overview
+
+NetPOS uses **Room Persistence Library** to manage local SQLite database operations. The database stores transaction history, MQTT events, and payment tracking data.
+
+## Database Configuration
+
+```kotlin database/AppDatabase.kt:19
+@Database(
+    entities = [
+        TransactionResponse::class,
+        MqttEventsLocal::class,
+        TransactionResponseXForTracking::class,
+        GetZenithPayByTransferUserTransactionsModel::class
+    ],
+    version = 18,
+    exportSchema = false
+)
+@TypeConverters(RoomTypeConverters::class)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun transactionTrackingTableDao(): TransactionTrackingTableDao
+    abstract fun transactionResponseDao(): TransactionResponseDao
+    abstract fun mqttLocalDao(): MqttLocalDao
+    abstract fun getZenithPayByTransferDao(): ZenithPayByTransferUserTransactionsDao
+}
+```
+
+<Note>
+  Current database version is **18**, using destructive migration strategy for schema updates.
+</Note>
+
+## Database Instantiation
+
+```kotlin database/AppDatabase.kt:38
+companion object {
+    @Volatile
+    private var INSTANCE: AppDatabase? = null
+
+    fun getDatabaseInstance(context: Context) = INSTANCE ?: synchronized(this) {
+        INSTANCE ?: buildDatabase(context).also { INSTANCE = it }
+    }
+
+    private fun buildDatabase(context: Context) =
+        Room.databaseBuilder(context, AppDatabase::class.java, APP_DB_NAME)
+            .fallbackToDestructiveMigration()
+            .build()
+}
+```
+
+<Info>
+  Database name is defined in `AppConstants.APP_DB_NAME` as **"netpos-db"**
+</Info>
+
+## Entities
+
+### 1. TransactionResponse
+
+Stores all card transaction records from NIBSS EPMS library.
+
+<Accordion title="TransactionResponse Fields">
+  ```kotlin
+  @Entity(tableName = "transactionresponse")
+  data class TransactionResponse(
+      @PrimaryKey(autoGenerate = true) val id: Long,
+      val terminalId: String,
+      val amount: Long,
+      val transactionType: TransactionType,
+      val responseCode: String,
+      val responseMessage: String,
+      val maskedPan: String?,
+      val cardExpiry: String?,
+      val cardHolder: String?,
+      val cardLabel: String?,
+      val stan: String?,
+      val rrn: String?,
+      val authCode: String?,
+      val transactionTimeInMillis: Long,
+      val localDate_13: String,
+      val accountType: IsoAccountType
+  )
+  ```
+  
+  **Key Fields:**
+  - `terminalId`: Unique terminal identifier
+  - `transactionType`: PURCHASE, REFUND, PRE_AUTHORIZATION, etc.
+  - `responseCode`: ISO 8583 response code ("00" = approved)
+  - `transactionTimeInMillis`: Unix timestamp
+  - `rrn`: Retrieval Reference Number
+  - `stan`: System Trace Audit Number
+</Accordion>
+
+### 2. MqttEventsLocal
+
+Stores failed MQTT event publish attempts for retry.
+
+```kotlin model/MqttEvent.kt:44
+@Entity(tableName = "mqttEvents")
+data class MqttEventsLocal(
+    val topic: String,
+    val data: String,
+    val cause: String? = null
+) {
+    @PrimaryKey(autoGenerate = true) var id: Int = 0
+}
+```
+
+<Accordion title="MQTT Event Topics">
+  ```kotlin
+  enum class MqttTopics(val topic: String) {
+      AUTHENTICATION("mqtt.pos.authentication.event"),
+      TERMINAL_CONFIGURATION("mqtt.pos.terminal_config.event"),
+      TRANSACTIONS("mqtt.pos.transaction.event"),
+      PRINTING_RECEIPT("mqtt.pos.device.event"),
+      NIP_PULL("mqtt.pos.bank_transfer.event"),
+      NIP_NEW("mqtt.pos.generate_session_code.event"),
+      NIP_SEARCH("mqtt.pos.verify_session_code.event"),
+      CARD_READER_EVENTS("mqtt.pos.device.event"),
+      POWER_EVENTS("mqtt.pos.device.event"),
+      BATTERY_EVENTS("mqtt.pos.device.event"),
+      SMS_EVENTS("mqtt.pos.sms.event")
+  }
+  ```
+</Accordion>
+
+### 3. TransactionResponseXForTracking
+
+Extended transaction tracking entity with additional metadata.
+
+### 4. GetZenithPayByTransferUserTransactionsModel
+
+Stores Zenith Bank pay-by-transfer transaction history.
+
+## Data Access Objects (DAOs)
+
+### TransactionResponseDao
+
+Manages all card transaction database operations.
+
+<CodeGroup>
+```kotlin Insert Operations
+@Dao
+interface TransactionResponseDao {
+    @Insert(onConflict = IGNORE)
+    fun insertNewTransaction(
+        transactionResponse: TransactionResponse
+    ): Single<Long>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertNewTransaction(
+        transactionResponses: List<TransactionResponse>
+    ): Single<List<Long>>
+}
+```
+
+```kotlin Update Operations
+@Update
+fun updateTransaction(
+    transactionResponse: TransactionResponse
+): Single<Int>
+```
+
+```kotlin Query Operations
+@Query("SELECT * FROM transactionresponse WHERE terminalId=:terminalId ORDER BY transactionTimeInMillis DESC")
+fun getTransactions(
+    terminalId: String
+): DataSource.Factory<Int, TransactionResponse>
+
+@Query("SELECT * FROM transactionresponse WHERE transactionTimeInMillis >= :beginningOfDay and transactionTimeInMillis <= :endOfDay and terminalId=:terminalId")
+fun getEndOfDayTransaction(
+    beginningOfDay: Long,
+    endOfDay: Long,
+    terminalId: String
+): LiveData<List<TransactionResponse>>
+```
+
+```kotlin Specialized Queries
+@Query("SELECT * FROM transactionresponse WHERE transactionType='PURCHASE' AND responseCode='00'")
+fun getRefundableTransactions(): LiveData<List<TransactionResponse>>
+
+@Query("DELETE FROM transactionresponse")
+fun nukeAllTransactions(): Completable
+```
+</CodeGroup>
+
+<Warning>
+  The `nukeAllTransactions()` method permanently deletes all transaction records. Use with extreme caution.
+</Warning>
+
+### MqttLocalDao
+
+Manages MQTT event persistence for retry mechanism.
+
+```kotlin database/dao/MqttLocalDao.kt:11
+@Dao
+interface MqttLocalDao {
+    @Insert
+    fun insertNewTransaction(mqttEventsLocal: MqttEventsLocal): Single<Long>
+
+    @Query("DELETE FROM mqttEvents")
+    fun deleteAllEvents(): Completable
+
+    @Query("SELECT * FROM mqttEvents")
+    fun getLocalEvents(): Single<List<MqttEventsLocal>>
+
+    @Query("SELECT COUNT(*) from mqttEvents")
+    fun getNumberOfFailedTransactions(): Single<Long>
+}
+```
+
+### ZenithPayByTransferUserTransactionsDao
+
+Manages Zenith pay-by-transfer transactions.
+
+## Type Converters
+
+Room requires type converters for complex data types:
+
+```kotlin util/RoomTypeConverters.kt:9
+class RoomTypeConverters {
+    companion object {
+        @TypeConverter
+        fun convertIsoAccountEnumToString(isoAccountType: IsoAccountType) = 
+            isoAccountType.name
+
+        @TypeConverter
+        fun convertIsoAccountStringToEnum(value: String) = 
+            IsoAccountType.valueOf(value)
+
+        @TypeConverter
+        fun convertTransactionResponseEnumToString(transactionType: TransactionType) =
+            transactionType.name
+
+        @TypeConverter
+        fun convertTransactionResponseToEnum(value: String) = 
+            TransactionType.valueOf(value)
+
+        @TypeConverter
+        fun convertTransactionResponseXtoString(transRespX: TransactionResponseX) =
+            Gson().toJson(transRespX)
+
+        @TypeConverter
+        fun convertStringToTransactionResponseX(tranRespXInJson: String) =
+            Gson().fromJson(tranRespXInJson, TransactionResponseX::class.java)
+    }
+}
+```
+
+<Info>
+  Type converters handle:
+  - Enum serialization (TransactionType, IsoAccountType)
+  - Complex object JSON serialization (TransactionResponseX)
+</Info>
+
+## Database Usage Examples
+
+### Insert Transaction
+
+```kotlin viewmodels/TransactionsViewModel.kt:131
+fun insertIntoDatabase(transactionResponse: List<TransactionResponse>) {
+    compositeDisposable.add(
+        appDatabase.transactionResponseDao()
+            .insertNewTransaction(transactionResponse)
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe { rowIds, error ->
+                rowIds?.let {
+                    Timber.d("Inserted ${it.size} transactions")
+                }
+                error?.let {
+                    Timber.e(it.localizedMessage)
+                }
+            }
+    )
+}
+```
+
+### Query with Paging
+
+```kotlin viewmodels/TransactionsViewModel.kt:88
+val pagedTransaction: LiveData<PagedList<TransactionResponse>>
+
+init {
+    val config = PagedList.Config.Builder()
+        .setPageSize(20)
+        .setEnablePlaceholders(false)
+        .build()
+    
+    pagedTransaction = LivePagedListBuilder(
+        appDatabase.transactionResponseDao()
+            .getTransactions(NetPosTerminalConfig.getTerminalId()),
+        config
+    ).build()
+}
+```
+
+### End-of-Day Query
+
+```kotlin
+val eodTransactions = appDatabase.transactionResponseDao()
+    .getEndOfDayTransaction(
+        beginningOfDay = startOfDayMillis,
+        endOfDay = endOfDayMillis,
+        terminalId = NetPosTerminalConfig.getTerminalId()
+    )
+```
+
+## Transaction Types
+
+```kotlin
+enum class TransactionType {
+    PURCHASE,
+    REFUND,
+    REVERSAL,
+    PRE_AUTHORIZATION,
+    PRE_AUTHORIZATION_COMPLETION,
+    BALANCE_INQUIRY,
+    CASH_ADVANCE
+}
+```
+
+## Account Types
+
+```kotlin
+enum class IsoAccountType {
+    DEFAULT_UNSPECIFIED,
+    SAVINGS,
+    CURRENT,
+    CREDIT,
+    UNIVERSAL,
+    INVESTMENT
+}
+```
+
+## Database Migration Strategy
+
+<Warning>
+  NetPOS uses **`fallbackToDestructiveMigration()`** which means:
+  - All data is lost on schema version changes
+  - Suitable for development but risky for production
+  - Consider implementing proper migration paths for production releases
+</Warning>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always use background threads" icon="clock">
+    All database operations run on `Schedulers.io()` to avoid blocking UI
+  </Card>
+  
+  <Card title="Observe LiveData" icon="eye">
+    Use LiveData for automatic UI updates when data changes
+  </Card>
+  
+  <Card title="Dispose subscriptions" icon="trash">
+    Dispose RxJava subscriptions in `onCleared()` to prevent leaks
+  </Card>
+  
+  <Card title="Use transactions for bulk operations" icon="database">
+    Wrap multiple inserts in `@Transaction` for atomicity
+  </Card>
+</CardGroup>
+
+## Query Performance Tips
+
+<Steps>
+  <Step title="Index frequently queried columns">
+    Add `@Index` annotation on `terminalId` and `transactionTimeInMillis`
+  </Step>
+  
+  <Step title="Use paging for large datasets">
+    Implement `DataSource.Factory` for memory-efficient scrolling
+  </Step>
+  
+  <Step title="Limit result sets">
+    Use SQL LIMIT clause for preview queries
+  </Step>
+  
+  <Step title="Avoid N+1 queries">
+    Use JOIN queries or `@Relation` for related data
+  </Step>
+</Steps>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Data Models" icon="diagram-project" href="/reference/models">
+    Explore all data model definitions
+  </Card>
+  
+  <Card title="ViewModels" icon="code" href="/reference/viewmodels">
+    See how ViewModels use DAOs
+  </Card>
+  
+  <Card title="Architecture" icon="sitemap" href="/reference/architecture">
+    Overall application architecture
+  </Card>
+</CardGroup>

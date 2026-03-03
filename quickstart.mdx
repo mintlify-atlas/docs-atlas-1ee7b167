@@ -1,80 +1,422 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Get started with NetPOS in minutes - from account setup to processing your first payment
 ---
 
-## Get started in three steps
+## Account setup
 
-Get your documentation site running locally and make your first customization.
+Before you can start accepting payments with NetPOS, you need to set up your merchant account and configure your terminal.
 
-### Step 1: Set up your local environment
+### Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+<Info>
+  **Requirements:**
+  - Android device running Android 6.0 (API level 23) or higher
+  - Active internet connection for initial setup
+  - Merchant account credentials from your payment service provider
+  - Terminal ID assigned to your business
+</Info>
+
+### Download and install
+
+1. Download the NetPOS application from your payment service provider or the designated distribution channel
+2. Install the APK on your Android device
+3. Grant the required permissions when prompted:
+   - Camera (for QR code scanning)
+   - Storage (for receipt downloads)
+   - Location (for transaction geolocation)
+   - Internet access
+
+### First login
+
+<Steps>
+  <Step title="Launch NetPOS">
+    Open the NetPOS application on your Android device. You'll see the login screen with your provider's branding.
+  </Step>
+  
+  <Step title="Enter credentials">
+    Enter your merchant username and password provided by your payment service provider.
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```text
+    Username: your-merchant-id
+    Password: ••••••••
+    ```
+  </Step>
+  
+  <Step title="Complete login">
+    Tap the "Login" button. The application will authenticate your credentials and configure your terminal settings automatically.
+  </Step>
+</Steps>
+
+<Note>
+  If you've forgotten your password, tap "Forgot Password?" and enter your registered email address to receive reset instructions.
+</Note>
+
+### Terminal configuration
+
+After your first login, NetPOS will automatically configure your terminal with the necessary parameters. For manual configuration or updates:
+
+<Steps>
+  <Step title="Access settings">
+    From the dashboard, tap the "Settings" card to open terminal configuration.
+  </Step>
+  
+  <Step title="Configure NIBSS parameters">
+    Enter or verify the following terminal parameters:
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    - **Terminal ID** - Your unique terminal identifier
+    - **NIBSS IP Address** - Connection endpoint for card processing
+    - **NIBSS Port** - Port number for NIBSS communication  
+    - **NIBSS Key 1** - Primary encryption key
+    - **NIBSS Key 2** - Secondary encryption key
+  </Step>
+  
+  <Step title="Save configuration">
+    Tap "Save Configuration" to store your terminal settings. The application will validate the parameters and establish connectivity.
+  </Step>
+</Steps>
 
-### Step 2: Deploy your changes
+<Warning>
+  Keep your NIBSS encryption keys confidential. Never share these keys with unauthorized personnel.
+</Warning>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+## Your first transaction
+
+Let's process your first card payment with NetPOS.
+
+### Process a card payment
+
+<Steps>
+  <Step title="Navigate to transactions">
+    From the dashboard, tap the "Transactions" card to access payment processing options.
+  </Step>
+  
+  <Step title="Select purchase">
+    Tap "Purchase" to initiate a new card payment transaction.
+  </Step>
+  
+  <Step title="Enter amount">
+    Enter the transaction amount using the on-screen keypad. The amount is displayed in your configured currency (e.g., NGN).
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```text
+    Amount: ₦5,000.00
+    ```
+    
+    Optionally, add a remark or narration for the transaction.
+  </Step>
+  
+  <Step title="Process transaction">
+    Tap "Process Transaction" to continue.
+  </Step>
+  
+  <Step title="Read card">
+    Follow the on-screen prompts:
+    
+    - Insert the customer's chip card into the card reader
+    - Or swipe the magnetic stripe if chip reading fails
+    - Wait for the card to be read
+  </Step>
+  
+  <Step title="Select account type">
+    A dialog will appear asking the customer to select their account type:
+    
+    - Savings
+    - Current  
+    - Credit
+    - Bonus Account
+    - Investment Account
+    - Universal Account
+  </Step>
+  
+  <Step title="Enter PIN">
+    The customer enters their card PIN on the secure PIN pad. The PIN is encrypted before transmission.
+  </Step>
+  
+  <Step title="Wait for approval">
+    NetPOS processes the transaction through NIBSS. You'll see a "Processing Transaction" indicator.
+    
+    The response typically takes 5-15 seconds.
+  </Step>
+  
+  <Step title="View result">
+    The transaction result is displayed:
+    
+    - **Payment Approved** (response code 00) - Transaction successful
+    - **Transaction Failed** - Transaction declined or error occurred
+    
+    The screen shows the full transaction details including:
+    - Transaction reference
+    - Amount
+    - Card type and masked PAN
+    - Response code and message  
+    - Date and time
+  </Step>
+  
+  <Step title="Print receipt">
+    Choose a receipt option:
+    
+    - **Print Customer** - Print customer copy
+    - **Print Merchant** - Print merchant copy  
+    - **Download** - Save receipt as PDF
+    - **Share** - Share receipt via messaging apps
+    - **Download and Share** - Save and share receipt
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<Tip>
+  For testing purposes, you can use test card numbers provided by your payment service provider to simulate transactions without real money movement.
+</Tip>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+## Accept a QR payment
 
-### Step 3: Go live
+NetPOS supports contactless QR code payments for customers who prefer to pay via their mobile banking apps.
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+### Generate a payment QR code
+
+<Steps>
+  <Step title="Navigate to Display QR">
+    From the dashboard menu (three dots), tap "Display QR" to access QR code generation.
+  </Step>
+  
+  <Step title="Enter amount">
+    Enter the payment amount for the transaction.
+    
+    ```text
+    Amount: ₦2,500.00
+    ```
+  </Step>
+  
+  <Step title="Generate QR code">
+    Tap "Process" to generate a QR code containing the payment details.
+  </Step>
+  
+  <Step title="Customer scans">
+    The customer scans the displayed QR code using their bank's mobile app.
+  </Step>
+  
+  <Step title="Wait for notification">
+    NetPOS automatically polls for the payment status. When the customer completes payment in their banking app, you'll receive an instant notification.
+  </Step>
+  
+  <Step title="Complete transaction">
+    The payment confirmation screen displays with full transaction details. Print or share the receipt with your customer.
+  </Step>
+</Steps>
+
+### Scan customer QR code
+
+Alternatively, scan QR codes presented by customers:
+
+1. From the dashboard menu, tap "Scan QR"
+2. Point your device camera at the customer's QR code
+3. NetPOS reads the payment details and processes the transaction
+4. View the result and print the receipt
+
+## Receive bank transfers
+
+NetPOS provides you with a unique virtual account number for receiving customer payments via bank transfer.
+
+### View your virtual account
+
+<Steps>
+  <Step title="Access Pay by Transfer">
+    From the dashboard, tap "Bank Transfer" or "Pay by Transfer" (label varies by provider).
+  </Step>
+  
+  <Step title="View account details">
+    Your virtual account details are displayed:
+    
+    - Account number
+    - Account name (your business name)
+    - Bank name
+    
+    Share these details with your customer for payment.
+  </Step>
+  
+  <Step title="Customer transfers">
+    The customer initiates a transfer to your virtual account from their mobile banking app or internet banking.
+  </Step>
+  
+  <Step title="Receive notification">
+    When the transfer is successful, you'll receive an instant push notification with:
+    
+    - Source account name and number
+    - Transfer amount  
+    - Transaction reference
+    - Date and time
+  </Step>
+  
+  <Step title="View transfer history">
+    Tap "Bank Transfer" from the dashboard to view all received transfers with full details.
+  </Step>
+</Steps>
+
+<Note>
+  Bank transfer payments are processed through NIP (NIBSS Instant Payment) and arrive in real-time. No card or PIN is required from the customer.
+</Note>
+
+## Process utility bills
+
+Help your customers pay their utility bills and earn commission on each transaction.
+
+### Pay electricity bill
+
+<Steps>
+  <Step title="Open bill payments">
+    From the dashboard, tap "Pay Bills" to access utility payment services.
+  </Step>
+  
+  <Step title="Select power">
+    Tap "Power" to process an electricity bill payment.
+  </Step>
+  
+  <Step title="Select provider">
+    Choose the customer's electricity distribution company from the list of providers.
+  </Step>
+  
+  <Step title="Enter meter number">
+    Enter the customer's prepaid or postpaid meter number.
+  </Step>
+  
+  <Step title="Verify account">
+    Tap "Verify" to retrieve the account details. The customer name and account information will be displayed for confirmation.
+  </Step>
+  
+  <Step title="Enter amount">
+    Enter the payment amount. The convenience fee (if applicable) will be displayed.
+  </Step>
+  
+  <Step title="Review and pay">
+    Review the payment summary:
+    
+    - Provider name
+    - Account name
+    - Meter number  
+    - Amount
+    - Convenience fee
+    - Total amount
+    
+    Tap "Proceed" to process the payment.
+  </Step>
+  
+  <Step title="Complete payment">
+    The payment is processed and the customer receives their token (for prepaid meters) or payment confirmation (for postpaid).
+    
+    Print or share the receipt containing the token number.
+  </Step>
+</Steps>
+
+### Other bill payments
+
+The same process applies to other bill categories:
+
+- **Cable TV** - Enter smart card number, select package, and pay
+- **Airtime & Data** - Enter mobile number, select amount or data package, and pay  
+- **Internet** - Select ISP, enter account number, select package, and pay
+
+## View transaction history
+
+Access and manage all your processed transactions.
+
+<Steps>
+  <Step title="Open transactions">
+    From the dashboard, tap "Transactions" to view your transaction history.
+  </Step>
+  
+  <Step title="Select view type">
+    Choose between:
+    
+    - **Last Transaction** - Quick view of your most recent transaction
+    - **All Transactions** - Complete transaction history with filtering
+  </Step>
+  
+  <Step title="Filter transactions (optional)">
+    Use the date picker to filter by date range:
+    
+    - Tap "FROM" to select start date
+    - Tap "TO" to select end date  
+    - View filtered results
+  </Step>
+  
+  <Step title="View details">
+    Tap any transaction to view complete details including card information, response codes, and timestamps.
+  </Step>
+  
+  <Step title="Reprint receipt">
+    From transaction details, tap "Reprint" to print a duplicate receipt (password protected).
+  </Step>
+</Steps>
+
+## Generate end of day report
+
+Reconcile your daily transactions with a comprehensive end of day report.
+
+<Steps>
+  <Step title="Access end of day">
+    From the dashboard, tap "View End Of Day" to generate a report.
+  </Step>
+  
+  <Step title="Select date">
+    A calendar dialog appears. Select the date for which you want to generate the report.
+  </Step>
+  
+  <Step title="Wait for report">
+    NetPOS retrieves all transactions for the selected date from the server (and local database if offline).
+  </Step>
+  
+  <Step title="Review summary">
+    The end of day report displays:
+    
+    - Total transactions count
+    - Total transaction amount  
+    - Approved transactions count
+    - Declined transactions count
+    
+    Use the filter chips to view:
+    - All transactions
+    - Approved transactions only
+    - Declined transactions only
+  </Step>
+  
+  <Step title="Print or view details">
+    - Tap "Print" to print the end of day report with the selected filter
+    - Tap "View" to see detailed transaction list
+    - Tap "Close" to exit
+  </Step>
+</Steps>
+
+<Tip>
+  Generate end of day reports regularly (ideally daily) to track your business performance and reconcile with settlement reports from your payment service provider.
+</Tip>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you've completed your first transactions, explore more features:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Explore all features" icon="stars" href="/features">
+    Learn about advanced features like refunds, pre-authorization, and multi-currency support
+  </Card>
+  <Card title="Configure settings" icon="gear" href="/features#settings-and-configuration">
+    Customize receipt formats, manage terminal settings, and configure security options
+  </Card>
+  <Card title="Offline operations" icon="wifi-slash" href="/features#offline-capabilities">
+    Understand how NetPOS works when network connectivity is limited
+  </Card>
+  <Card title="Security best practices" icon="shield-check" href="/features#security-features">
+    Learn about transaction security, PIN handling, and data protection
+  </Card>
 </CardGroup>
 
+## Getting help
+
+If you encounter any issues or need assistance:
+
+- **Customer support** - Contact your payment service provider's support team
+- **Email** - info@netplusdotcom.com  
+- **Phone** - +234 818 778 2542, +234 809 999 0660
+- **Address** - 4, Hakeem Dickson Drive, Off TF, Kuboye Street, Oniru, Lagos
+
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  For white-label partners, support contact information may vary. Check your application's settings or receipt footer for provider-specific contact details.
 </Note>

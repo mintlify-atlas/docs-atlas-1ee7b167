@@ -1,0 +1,324 @@
+---
+title: Card Payments
+description: Process EMV chip card and contactless card payments with multi-currency support
+---
+
+NetPOS supports card-based payments through a web-based payment interface powered by PaySaddle. Merchants can accept card payments in multiple currencies with automatic receipt generation.
+
+## Payment Flow
+
+<Steps>
+  <Step title="Initiate Purchase">
+    Navigate to the Purchase screen and enter the transaction amount
+  </Step>
+  
+  <Step title="Select Currency">
+    Choose the transaction currency from the supported list (NGN, USD, EUR, GBP, etc.)
+  </Step>
+  
+  <Step title="Process Payment">
+    The app loads a secure WebView with PaySaddle payment interface for card entry
+  </Step>
+  
+  <Step title="Complete Transaction">
+    Customer enters card details in the secure web interface to complete payment
+  </Step>
+</Steps>
+
+## Implementation
+
+### PurchaseFragment
+
+The card payment process begins in `PurchaseFragment.kt` where merchants enter the amount and currency:
+
+```kotlin PurchaseFragment.kt
+private fun processPayment() {
+    when {
+        amount.text.toString().isEmpty() -> {
+            showToast(getString(R.string.all_please_enter_amount))
+        }
+        getCurrency.text.toString().isEmpty() -> {
+            showToast(getString(R.string.all_select_currency))
+        }
+        else -> {
+            if (validateSignUpFieldsOnTextChange()) {
+                val bundle = Bundle()
+                bundle.putString(PAYMENT_KEY, amount.text.toString())
+                bundle.putString(CURRENCY_KEY, getCurrency.text.toString())
+                val fragment = CompletePaymentWebViewFragment()
+                fragment.arguments = bundle
+                requireActivity().supportFragmentManager.beginTransaction()
+                    .replace(R.id.container_main, fragment)
+                    .addToBackStack(null)
+                    .commit()
+            }
+        }
+    }
+}
+```
+
+### Currency Selection
+
+NetPOS provides a currency dropdown adapter:
+
+```kotlin
+private fun listOfCurrency() {
+    val currencyAdapter = CurrencyAdapter(
+        displayCurrency(), 
+        requireContext(),
+        android.R.layout.simple_expandable_list_item_1
+    )
+    getCurrency.setAdapter(currencyAdapter)
+    
+    getCurrency.onItemClickListener = object : AdapterView.OnItemClickListener {
+        override fun onItemClick(adapterView: AdapterView<*>?, p1: View?, p2: Int, p3: Long) {
+            val selectedCurrency = adapterView?.getItemAtPosition(p2) as String
+            getCurrency.setText(selectedCurrency)
+        }
+    }
+}
+```
+
+### Payment WebView
+
+After amount and currency selection, the payment is completed through `CompletePaymentWebViewFragment.kt`:
+
+```kotlin CompletePaymentWebViewFragment.kt
+override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    super.onViewCreated(view, savedInstanceState)
+    webView = binding.loadWebView
+    bank = getBankName() ?: ""
+    val user = Singletons.gson.fromJson(Prefs.getString(PREF_USER, ""), User::class.java)
+    netposID = user.netplus_id
+    userTID = user.terminal_id
+    netplusPayMid = user.merchantId
+    merchantID = user.netplusPayMid
+    email = CONTACTLESS_TRANSACTION_DEFAULT_EMAIL
+    
+    amount = arguments?.getString(PAYMENT_KEY)
+    currency = arguments?.getString(CURRENCY_KEY)
+    setUpWebView(webView)
+}
+```
+
+### WebView Configuration
+
+The payment WebView is configured with secure settings:
+
+```kotlin
+private fun setUpWebView(webView: WebView) {
+    webView.settings.apply {
+        javaScriptEnabled = true
+        loadWithOverviewMode = true
+        useWideViewPort = true
+        domStorageEnabled = true
+        databaseEnabled = true
+        setGeolocationEnabled(true)
+        defaultTextEncodingName = "utf-8"
+        mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            safeBrowsingEnabled = true
+        }
+    }
+    
+    webView.apply {
+        webViewClient = object : WebViewClient() {
+            override fun onReceivedSslError(
+                view: WebView?, 
+                handler: SslErrorHandler?, 
+                error: SslError?
+            ) {
+                handler?.proceed()
+            }
+            
+            override fun onReceivedError(
+                view: WebView?, 
+                request: WebResourceRequest?, 
+                error: WebResourceError?
+            ) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    Log.e("WebViewError", "${error?.description}")
+                }
+            }
+        }
+        webChromeClient = WebChromeClient()
+        loadUrl(buildPaymentUrl())
+    }
+}
+```
+
+## Payment URL Structure
+
+The payment URL includes all necessary merchant and transaction parameters:
+
+```kotlin
+val paymentUrl = "https://qrpay.paysaddle.com/payment/#!/card?" +
+    "NPmerchantId=$merchantID" +
+    "&terminalId=$userTID" +
+    "&netposId=$netplusPayMid" +
+    "&amount=$amount" +
+    "&name=$CUSTOMER" +
+    "&email=$CONTACTLESS_TRANSACTION_DEFAULT_EMAIL" +
+    "&bank=$bank" +
+    "&app=$CONTACT" +
+    "&currency=$currency"
+```
+
+### URL Parameters
+
+| Parameter | Description | Source |
+|-----------|-------------|--------|
+| `NPmerchantId` | NetPlus Pay Merchant ID | User profile |
+| `terminalId` | Terminal identifier | User profile |
+| `netposId` | NetPos merchant ID | User profile |
+| `amount` | Transaction amount | User input |
+| `name` | Customer name | Default: "Customer" |
+| `email` | Transaction email | Default contactless email |
+| `bank` | Bank name | Configuration |
+| `app` | Application identifier | Contact constant |
+| `currency` | Transaction currency | User selection |
+
+## Supported Currencies
+
+NetPOS supports the following currencies for card payments:
+
+<Tabs>
+  <Tab title="Major Currencies">
+    - **NGN** - Nigerian Naira (primary)
+    - **USD** - United States Dollar
+    - **EUR** - Euro
+    - **GBP** - British Pound Sterling
+  </Tab>
+  
+  <Tab title="Additional Currencies">
+    - **CNY** - Chinese Yuan
+    - **JPY** - Japanese Yen
+    - Other currencies as configured in `displayCurrency()`
+  </Tab>
+</Tabs>
+
+## Input Validation
+
+The payment form validates input in real-time:
+
+```kotlin
+private fun validateSignUpFieldsOnTextChange(): Boolean {
+    var isValidated = true
+    
+    amount.doOnTextChanged { _, _, _, _ ->
+        when {
+            amount.text.toString().trim().isEmpty() -> {
+                showToast(getString(R.string.all_please_enter_amount))
+                isValidated = false
+            }
+            else -> {
+                binding.priceInputLayout.error = null
+                isValidated = true
+            }
+        }
+    }
+    return isValidated
+}
+```
+
+## Navigation Handling
+
+The WebView supports back navigation through payment pages:
+
+```kotlin
+activity?.onBackPressedDispatcher?.addCallback(
+    viewLifecycleOwner,
+    object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (webView.canGoBack()) {
+                webView.goBack()
+            } else {
+                requireActivity().supportFragmentManager.popBackStack()
+            }
+        }
+    }
+)
+```
+
+## Security Features
+
+<Warning>
+The WebView is configured with SSL error handling for development/testing. In production environments, proper SSL certificate validation should be enforced.
+</Warning>
+
+### Secure Configuration
+
+- **JavaScript Enabled** - Required for PaySaddle interface
+- **DOM Storage** - Enabled for payment session management
+- **Safe Browsing** - Enabled on Android 8.1+
+- **Mixed Content** - Allowed (configure based on security requirements)
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Empty Amount">
+    **Error:** "Please enter amount"
+    
+    **Cause:** User attempted to proceed without entering an amount
+    
+    **Solution:** Enter a valid transaction amount before proceeding
+  </Accordion>
+  
+  <Accordion title="Missing Currency">
+    **Error:** "Select currency"
+    
+    **Cause:** User did not select a currency from the dropdown
+    
+    **Solution:** Select the appropriate currency before processing
+  </Accordion>
+  
+  <Accordion title="WebView Error">
+    **Error:** Resource loading errors in WebView
+    
+    **Cause:** Network connectivity issues or payment gateway errors
+    
+    **Solution:** Check internet connection and retry the transaction
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Amount Validation" icon="circle-check">
+    Always validate amount before opening payment WebView to avoid unnecessary network calls
+  </Card>
+  
+  <Card title="Currency Selection" icon="circle-check">
+    Ensure currency is selected to prevent payment errors at the gateway
+  </Card>
+  
+  <Card title="Network Check" icon="circle-check">
+    Verify network connectivity before initiating payment process
+  </Card>
+  
+  <Card title="Error Messages" icon="circle-check">
+    Provide clear, actionable error messages to guide merchants through resolution
+  </Card>
+</CardGroup>
+
+## Testing
+
+<Note>
+Test card payments in a sandbox environment before processing live transactions. Ensure all merchant credentials are properly configured.
+</Note>
+
+### Test Checklist
+
+- [ ] Amount entry and validation
+- [ ] Currency selection functionality
+- [ ] WebView loading and navigation
+- [ ] Payment completion flow
+- [ ] Error handling scenarios
+- [ ] Back navigation behavior
+
+## Related Resources
+
+<Card title="Payment Gateway" icon="link" href="https://qrpay.paysaddle.com">
+  PaySaddle payment gateway documentation
+</Card>

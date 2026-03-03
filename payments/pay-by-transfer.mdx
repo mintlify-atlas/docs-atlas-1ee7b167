@@ -1,0 +1,394 @@
+---
+title: Pay-by-Transfer
+description: Accept payments via bank transfers using virtual account numbers
+---
+
+NetPOS enables merchants to accept payments through bank transfers by generating virtual account numbers for customers. This payment method is ideal for customers who prefer direct bank transfers over card payments.
+
+## Overview
+
+Pay-by-Transfer allows merchants to display virtual account details that customers can transfer money to from their mobile banking apps or internet banking platforms.
+
+<Info>
+Virtual account numbers are uniquely generated for each merchant and can be used for multiple transactions.
+</Info>
+
+## Payment Flow
+
+<Steps>
+  <Step title="Retrieve Merchant Details">
+    System fetches the merchant's virtual account details from the payment gateway
+  </Step>
+  
+  <Step title="Display Account Information">
+    Show bank name, account number, and account name in a bottom sheet dialog
+  </Step>
+  
+  <Step title="Customer Transfers">
+    Customer initiates a bank transfer to the displayed account using their banking app
+  </Step>
+  
+  <Step title="Payment Confirmation">
+    Transaction is automatically confirmed and recorded in the merchant's account
+  </Step>
+</Steps>
+
+## Implementation
+
+### PayByTransferBottomSheetDialogFragment
+
+This fragment displays the virtual account details to the merchant:
+
+```kotlin PayByTransferBottomSheetDialogFragment.kt
+@Singleton
+@AndroidEntryPoint
+class PayByTransferBottomSheetDialogFragment @Inject constructor() : 
+    BottomSheetDialogFragment() {
+    
+    private lateinit var binding: LayoutPayWithTransferBinding
+    private lateinit var bankNameTv: TextView
+    private lateinit var accountNumTv: TextView
+    private lateinit var accountNameTv: TextView
+    private lateinit var buttonDone: Button
+    
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        binding = DataBindingUtil.inflate(
+            inflater, 
+            R.layout.layout_pay_with_transfer, 
+            container, 
+            false
+        )
+        return binding.root
+    }
+    
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        init()
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        buttonDone.setOnClickListener {
+            dismiss()
+        }
+    }
+    
+    private fun init() {
+        with(binding) {
+            bankNameTv = bank
+            accountNameTv = accountName
+            accountNumTv = accountNumber
+            buttonDone = btnDone
+        }
+    }
+}
+```
+
+### PayByTransferService
+
+The service interface for retrieving merchant virtual account details:
+
+```kotlin PayByTransferService.kt
+interface PayByTransferService {
+    @GET("getUserAccount/{NetpluspayMid}")
+    fun getMerchantDetails(
+        @Header("Authorization") token: String,
+        @Path("NetpluspayMid") partnerId: String
+    ): Single<Response<MerchantDetailsResponse>>
+}
+```
+
+### API Endpoint
+
+<CodeGroup>
+```kotlin Endpoint
+GET /getUserAccount/{NetpluspayMid}
+```
+
+```kotlin Headers
+Authorization: Bearer {token}
+```
+
+```kotlin Path Parameters
+NetpluspayMid: String // Merchant's NetPlus Pay ID
+```
+</CodeGroup>
+
+### Response Model
+
+The merchant details response contains the virtual account information:
+
+```kotlin MerchantDetailsResponse.kt
+data class MerchantDetailsResponse(
+    val user: MerchantDetail
+)
+
+data class MerchantDetail(
+    val acctNumber: String,      // Virtual account number
+    val bank: String,             // Bank name
+    val businessName: String,     // Merchant business name
+    val merchantId: String,       // Merchant ID
+    val partnerId: String,        // Partner ID
+    val terminalId: String        // Terminal ID
+)
+```
+
+### Response Example
+
+```json
+{
+  "user": {
+    "acctNumber": "1234567890",
+    "bank": "Providus Bank",
+    "businessName": "ABC Store",
+    "merchantId": "MID12345",
+    "partnerId": "PID67890",
+    "terminalId": "TID54321"
+  }
+}
+```
+
+## Account Information Display
+
+The bottom sheet dialog displays the following information:
+
+| Field | Description | Source |
+|-------|-------------|--------|
+| **Bank Name** | Name of the bank holding the virtual account | `user.bank` |
+| **Account Number** | Virtual account number for transfers | `user.acctNumber` |
+| **Account Name** | Business name registered for the account | `user.businessName` |
+
+## Usage Flow
+
+### 1. Initiate Pay-by-Transfer
+
+Merchant selects the Pay-by-Transfer option from the payment methods menu.
+
+### 2. Fetch Account Details
+
+The app retrieves the merchant's virtual account details:
+
+```kotlin
+val token = "Bearer ${authToken}"
+val netplusPayMid = user.netplusPayMid
+
+payByTransferService.getMerchantDetails(token, netplusPayMid)
+    .subscribeOn(Schedulers.io())
+    .observeOn(AndroidSchedulers.mainThread())
+    .subscribe { response, error ->
+        response?.let {
+            if (it.isSuccessful) {
+                val merchantDetails = it.body()?.user
+                displayAccountDetails(merchantDetails)
+            }
+        }
+        error?.let {
+            showError("Failed to retrieve account details")
+        }
+    }
+```
+
+### 3. Display Account Information
+
+Populate the bottom sheet dialog with account details:
+
+```kotlin
+fun displayAccountDetails(details: MerchantDetail?) {
+    details?.let {
+        binding.bank.text = it.bank
+        binding.accountNumber.text = it.acctNumber
+        binding.accountName.text = it.businessName
+        
+        bottomSheetDialog.show()
+    }
+}
+```
+
+### 4. Customer Transfer
+
+The customer uses the displayed account information to initiate a bank transfer from their mobile banking app.
+
+### 5. Complete Transaction
+
+Once the customer confirms the transfer in their banking app, the merchant clicks "Done" to dismiss the dialog.
+
+<Warning>
+The merchant should verify that the payment has been received in their account before completing the transaction or releasing goods/services.
+</Warning>
+
+## Account Verification
+
+Merchants should implement proper verification workflow:
+
+<Steps>
+  <Step title="Display Account">
+    Show virtual account details to customer
+  </Step>
+  
+  <Step title="Customer Transfers">
+    Customer completes transfer in their banking app
+  </Step>
+  
+  <Step title="Check Balance">
+    Merchant verifies payment receipt via banking app or account statement
+  </Step>
+  
+  <Step title="Confirm Transaction">
+    Merchant confirms receipt and completes the transaction
+  </Step>
+</Steps>
+
+## Integration Requirements
+
+### Authentication
+
+Pay-by-Transfer requires proper authentication:
+
+- **Authorization Token** - Valid Bearer token for API authentication
+- **Merchant ID** - NetPlus Pay merchant identifier
+
+### User Credentials
+
+The following merchant details must be configured:
+
+```kotlin
+val user = Singletons.gson.fromJson(
+    Prefs.getString(PREF_USER, ""), 
+    User::class.java
+)
+val netplusPayMid = user.netplusPayMid
+val merchantId = user.merchantId
+val terminalId = user.terminal_id
+```
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Authentication Failed">
+    **Error:** 401 Unauthorized
+    
+    **Cause:** Invalid or expired authentication token
+    
+    **Solution:** Refresh the authentication token and retry
+  </Accordion>
+  
+  <Accordion title="Merchant Not Found">
+    **Error:** 404 Not Found
+    
+    **Cause:** Invalid NetPlus Pay Merchant ID or merchant not registered
+    
+    **Solution:** Verify merchant registration and credentials
+  </Accordion>
+  
+  <Accordion title="Network Error">
+    **Error:** Connection timeout or failed
+    
+    **Cause:** No internet connectivity or server unreachable
+    
+    **Solution:** Check network connection and retry
+  </Accordion>
+</AccordionGroup>
+
+## Bottom Sheet UI Components
+
+The Pay-by-Transfer bottom sheet includes:
+
+<Tabs>
+  <Tab title="Account Details Section">
+    - **Bank Name Label** - "Bank Name:"
+    - **Bank Name Value** - Dynamic bank name
+    - **Account Number Label** - "Account Number:"
+    - **Account Number Value** - Dynamic 10-digit account number
+    - **Account Name Label** - "Account Name:"
+    - **Account Name Value** - Business name
+  </Tab>
+  
+  <Tab title="Action Buttons">
+    - **Copy Button** - Copy account details to clipboard
+    - **Share Button** - Share account details via messaging apps
+    - **Done Button** - Dismiss dialog after customer completes transfer
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Verify Receipt" icon="circle-check">
+    Always verify payment receipt before completing the transaction
+  </Card>
+  
+  <Card title="Account Display" icon="circle-check">
+    Display account details clearly and allow customers to copy the information
+  </Card>
+  
+  <Card title="Error Handling" icon="circle-check">
+    Implement proper error handling for API failures and network issues
+  </Card>
+  
+  <Card title="Session Management" icon="circle-check">
+    Ensure authentication tokens are valid before making API calls
+  </Card>
+</CardGroup>
+
+## Transaction Records
+
+Pay-by-Transfer transactions are automatically recorded in:
+
+- **Local Database** - Transaction history stored locally
+- **Backend System** - Synced with NetPOS backend for reconciliation
+- **Bank Statement** - Reflected in merchant's bank account statement
+
+## Additional Features
+
+### Copy to Clipboard
+
+Implement clipboard functionality for easy sharing:
+
+```kotlin
+fun copyAccountNumber(accountNumber: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = ClipData.newPlainText("Account Number", accountNumber)
+    clipboard.setPrimaryClip(clip)
+    Toast.makeText(context, "Account number copied", Toast.LENGTH_SHORT).show()
+}
+```
+
+### Share Account Details
+
+Allow merchants to share account information:
+
+```kotlin
+fun shareAccountDetails(bank: String, accountNumber: String, accountName: String) {
+    val shareText = """
+        Bank: $bank
+        Account Number: $accountNumber
+        Account Name: $accountName
+    """.trimIndent()
+    
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, shareText)
+    }
+    context.startActivity(Intent.createChooser(shareIntent, "Share Account Details"))
+}
+```
+
+<Note>
+Virtual account numbers remain active and can be reused for multiple transactions. There's no need to generate new account numbers for each transaction.
+</Note>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Payment Overview" icon="book" href="/payments/overview">
+    Learn about all available payment methods
+  </Card>
+  
+  <Card title="Transaction History" icon="clock-rotate-left" href="/guide/transactions">
+    View and manage transaction records
+  </Card>
+</CardGroup>

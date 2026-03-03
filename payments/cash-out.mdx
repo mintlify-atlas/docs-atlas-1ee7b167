@@ -1,0 +1,454 @@
+---
+title: Cash-Out Services
+description: Process cash withdrawal transactions for customers using card-based authentication
+---
+
+NetPOS supports cash-out services, allowing merchants to provide cash withdrawal services to customers. This feature enables merchants to act as agent banking points where customers can withdraw cash using their debit cards.
+
+## Overview
+
+Cash-out services transform the POS terminal into an ATM-like service point where customers can withdraw cash from their bank accounts using their debit cards.
+
+<Info>
+Cash-out transactions require EMV card reading capabilities and proper merchant authorization as an agent banking provider.
+</Info>
+
+## Cash-Out Flow
+
+<Steps>
+  <Step title="Initiate Cash-Out">
+    Merchant selects cash-out service and enters withdrawal amount
+  </Step>
+  
+  <Step title="Card Authentication">
+    Customer inserts or taps their debit card on the POS terminal
+  </Step>
+  
+  <Step title="PIN Entry">
+    Customer enters their card PIN for authorization
+  </Step>
+  
+  <Step title="Process Transaction">
+    System processes the cash withdrawal request through the payment gateway
+  </Step>
+  
+  <Step title="Dispense Cash">
+    Upon approval, merchant dispenses cash to the customer
+  </Step>
+  
+  <Step title="Receipt Generation">
+    System generates transaction receipt for both merchant and customer
+  </Step>
+</Steps>
+
+## Transaction Response Model
+
+Cash-out transactions use the `CashOutResponse` model:
+
+```kotlin CashOutResponse.kt
+@Root(strict = false, name = "transferResponse")
+data class CashOutResponse @JvmOverloads constructor(
+    @field:Element(name = "description")
+    var description: String = "",
+    
+    @field:Element(name = "field39")
+    var field39: String = "A3",
+    
+    @field:Element(name = "authId", required = false)
+    var authId: String = "",
+    
+    @field:Path("hostEmvData")
+    @field:Element(name = "AmountAuthorized", required = false)
+    var amountAuthorized: Long = 0L,
+    
+    @field:Path("hostEmvData")
+    @field:Element(name = "AmountOther", required = false)
+    var AmountOther: Long = 0L,
+    
+    @field:Path("hostEmvData")
+    @field:Element(name = "atc", required = false)
+    var atc: String = "",
+    
+    @field:Path("hostEmvData")
+    @field:Element(name = "iad", required = false)
+    var iad: String = "",
+    
+    @field:Path("hostEmvData")
+    @field:Element(name = "rc", required = false)
+    var rc: Int = 0,
+    
+    @field:Element(name = "referenceNumber", required = false)
+    var referenceNumber: String = "",
+    
+    @field:Element(name = "transactionChannelName", required = false)
+    var transactionChannelName: String = "",
+    
+    @field:Element(name = "wasReceived", required = false)
+    var wasReceived: Boolean = false,
+    
+    @field:Element(name = "wasSent", required = false)
+    var wasSent: Boolean = false
+)
+```
+
+## Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `description` | String | Transaction description/status message |
+| `field39` | String | Response code (e.g., "00" for approved, "A3" for default) |
+| `authId` | String | Authorization ID from the bank |
+| `amountAuthorized` | Long | Authorized withdrawal amount in minor units |
+| `AmountOther` | Long | Additional amount (e.g., fees) |
+| `atc` | String | Application Transaction Counter |
+| `iad` | String | Issuer Application Data |
+| `rc` | Int | Response code |
+| `referenceNumber` | String | Unique transaction reference number |
+| `transactionChannelName` | String | Channel used for transaction |
+| `wasReceived` | Boolean | Indicates if response was received |
+| `wasSent` | Boolean | Indicates if request was sent |
+
+## Transaction Response Conversion
+
+The `CashOutResponse` is converted to `TransactionResponse` for storage:
+
+```kotlin
+fun CashOutResponse.toTransactionResponse(
+    stan: String,
+    cardData: CardData,
+    transactionTime: Long,
+    iswParameters: IswParameters,
+    amount: Long,
+    interswitchThreshold: Long = 0L,
+    errorMessage: String? = null,
+    reqRRN: String = ""
+) = TransactionResponse().also {
+    it.amount = amount
+    it.RRN = if (this.referenceNumber.isEmpty()) reqRRN else this.referenceNumber
+    it.responseCode = this.field39
+    it.authCode = this.authId
+    it.STAN = stan
+    it.echoData = iswParameters.remark
+    it.maskedPan = StringUtils.overlay(cardData.pan, "xxxxxx", 6, 12)
+    it.cardExpiry = cardData.expiryDate
+    it.cardLabel = ""
+    it.transactionTimeInMillis = transactionTime
+    it.transactionType = TransactionType.PURCHASE
+    it.terminalId = iswParameters.terminalId
+    it.merchantId = iswParameters.merchantId
+    it.transmissionDateTime = SimpleDateFormat("MMddhhmmss", Locale.getDefault())
+        .format(transactionTime)
+    it.localTime_12 = SimpleDateFormat("hhmmss", Locale.getDefault())
+        .format(transactionTime)
+    it.localDate_13 = SimpleDateFormat("MMdd", Locale.getDefault())
+        .format(transactionTime)
+    it.accountType = IsoAccountType.DEFAULT_UNSPECIFIED
+    it.source = PosMode.ISW
+    it.errorMessage = errorMessage
+    it.interSwitchThreshold = interswitchThreshold
+}
+```
+
+## TransactionResponse Fields
+
+### Card Information
+
+```kotlin
+it.maskedPan = StringUtils.overlay(cardData.pan, "xxxxxx", 6, 12)
+it.cardExpiry = cardData.expiryDate
+it.cardLabel = ""
+```
+
+- **maskedPan** - Card number with middle digits masked (e.g., 5399xxxxxx1234)
+- **cardExpiry** - Card expiration date from EMV chip
+- **cardLabel** - Card scheme label (Visa, Mastercard, etc.)
+
+### Transaction Metadata
+
+```kotlin
+it.transactionTimeInMillis = transactionTime
+it.transmissionDateTime = SimpleDateFormat("MMddhhmmss", Locale.getDefault())
+    .format(transactionTime)
+it.localTime_12 = SimpleDateFormat("hhmmss", Locale.getDefault())
+    .format(transactionTime)
+it.localDate_13 = SimpleDateFormat("MMdd", Locale.getDefault())
+    .format(transactionTime)
+```
+
+- **transactionTimeInMillis** - Transaction timestamp in milliseconds
+- **transmissionDateTime** - Formatted datetime (MMddhhmmss)
+- **localTime_12** - Time in hhmmss format
+- **localDate_13** - Date in MMdd format
+
+### Transaction Identifiers
+
+```kotlin
+it.STAN = stan
+it.RRN = if (this.referenceNumber.isEmpty()) reqRRN else this.referenceNumber
+it.authCode = this.authId
+```
+
+- **STAN** - System Trace Audit Number (unique transaction ID)
+- **RRN** - Retrieval Reference Number
+- **authCode** - Authorization code from issuing bank
+
+## Card Data Processing
+
+Cash-out transactions require reading card data from the EMV chip:
+
+<Tabs>
+  <Tab title="Card Reading">
+    ```kotlin
+    val cardData = CardData(
+        pan = "5399XXXXXXXX1234",
+        expiryDate = "12/25",
+        cardholderName = "JOHN DOE",
+        track2Data = "..."
+    )
+    ```
+  </Tab>
+  
+  <Tab title="PAN Masking">
+    ```kotlin
+    val maskedPan = StringUtils.overlay(
+        cardData.pan, 
+        "xxxxxx", 
+        6, // Start position
+        12  // End position
+    )
+    // Result: 5399xxxxxx1234
+    ```
+  </Tab>
+</Tabs>
+
+## ISW Parameters
+
+Interswitch parameters required for cash-out:
+
+```kotlin
+data class IswParameters(
+    val terminalId: String,
+    val merchantId: String,
+    val merchantCategoryCode: String,
+    val merchantNameAndLocation: String,
+    val remark: String
+)
+```
+
+### Parameter Sources
+
+| Parameter | Description | Source |
+|-----------|-------------|--------|
+| `terminalId` | POS terminal ID | User configuration |
+| `merchantId` | Merchant identifier | User configuration |
+| `merchantCategoryCode` | MCC code for agent banking | Configuration |
+| `merchantNameAndLocation` | Merchant details | User profile |
+| `remark` | Transaction remark | System generated |
+
+## Transaction Types
+
+Cash-out is processed as a PURCHASE transaction:
+
+```kotlin
+it.transactionType = TransactionType.PURCHASE
+```
+
+### Available Transaction Types
+
+- **PURCHASE** - Standard purchase/cash-out
+- **REFUND** - Refund transaction
+- **CASH_ADVANCE** - Cash advance on credit cards
+- **PRE_AUTHORIZATION** - Pre-auth hold
+
+## Account Types
+
+```kotlin
+it.accountType = IsoAccountType.DEFAULT_UNSPECIFIED
+```
+
+### Supported Account Types
+
+- **DEFAULT_UNSPECIFIED** - Default account type
+- **SAVINGS** - Savings account
+- **CURRENT** - Current/checking account
+- **CREDIT** - Credit card account
+
+## POS Mode
+
+```kotlin
+it.source = PosMode.ISW
+```
+
+Transactions are processed through Interswitch (ISW) gateway.
+
+## Response Codes
+
+<Tabs>
+  <Tab title="Success Codes">
+    - **00** - Approved/successful
+    - **10** - Partial approval (amount less than requested)
+  </Tab>
+  
+  <Tab title="Decline Codes">
+    - **51** - Insufficient funds
+    - **55** - Incorrect PIN
+    - **91** - Issuer unavailable
+    - **A3** - Default/pending
+  </Tab>
+  
+  <Tab title="Error Codes">
+    - **06** - Error
+    - **12** - Invalid transaction
+    - **30** - Format error
+  </Tab>
+</Tabs>
+
+## Transaction Storage
+
+Completed transactions are stored with:
+
+```kotlin
+val transactionResponse = cashOutResponse.toTransactionResponse(
+    stan = generateSTAN(),
+    cardData = cardData,
+    transactionTime = System.currentTimeMillis(),
+    iswParameters = getIswParameters(),
+    amount = withdrawalAmount,
+    interswitchThreshold = threshold,
+    errorMessage = null,
+    reqRRN = requestRRN
+)
+
+// Save to database
+transactionDao.insert(transactionResponse)
+```
+
+## Receipt Information
+
+Cash-out receipts include:
+
+<CardGroup cols={2}>
+  <Card title="Transaction Details">
+    - Transaction type (Cash Withdrawal)
+    - Amount
+    - Date and time
+    - Reference number (RRN)
+  </Card>
+  
+  <Card title="Card Information">
+    - Masked PAN
+    - Card type
+    - Authorization code
+    - Response message
+  </Card>
+  
+  <Card title="Merchant Details">
+    - Merchant name
+    - Terminal ID
+    - Merchant ID
+    - Location
+  </Card>
+  
+  <Card title="Status">
+    - Approval status
+    - Response code
+    - STAN
+    - Receipt number
+  </Card>
+</CardGroup>
+
+## Security Considerations
+
+<Warning>
+**Critical Security Requirements:**
+
+- Cash must only be dispensed after receiving approved response (field39 = "00")
+- Verify authorization code is present and valid
+- Ensure card PIN is entered securely on POS device
+- Store transaction records securely for reconciliation
+- Implement daily cash-out limits as per banking regulations
+</Warning>
+
+## Best Practices
+
+<Steps>
+  <Step title="Pre-Transaction Verification">
+    Verify merchant has sufficient cash before initiating cash-out
+  </Step>
+  
+  <Step title="Card Reading">
+    Use EMV chip reading for enhanced security (avoid magnetic stripe)
+  </Step>
+  
+  <Step title="PIN Entry">
+    Ensure customer enters PIN on secure POS keypad, never on merchant device
+  </Step>
+  
+  <Step title="Response Validation">
+    Check response code is "00" before dispensing cash
+  </Step>
+  
+  <Step title="Receipt Printing">
+    Print receipt immediately after approved transaction
+  </Step>
+  
+  <Step title="Cash Dispensing">
+    Count cash in front of customer before handing over
+  </Step>
+  
+  <Step title="Record Keeping">
+    Store transaction records for audit and reconciliation
+  </Step>
+</Steps>
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Insufficient Funds (51)">
+    **Error:** Customer account has insufficient balance
+    
+    **Action:** Inform customer and offer to retry with lower amount
+  </Accordion>
+  
+  <Accordion title="Incorrect PIN (55)">
+    **Error:** Customer entered wrong PIN
+    
+    **Action:** Allow customer to retry (max 3 attempts before card lock)
+  </Accordion>
+  
+  <Accordion title="Timeout/No Response">
+    **Error:** No response from payment gateway
+    
+    **Action:** DO NOT dispense cash. Perform transaction reversal or inquiry
+  </Accordion>
+  
+  <Accordion title="Partial Approval (10)">
+    **Error:** Bank approved less than requested amount
+    
+    **Action:** Dispense approved amount or cancel and retry
+  </Accordion>
+</AccordionGroup>
+
+## Compliance Requirements
+
+<Note>
+Merchants providing cash-out services must:
+
+- Be registered as authorized agent banking providers
+- Maintain adequate cash float for daily operations
+- Implement daily cash-out limits per customer
+- Keep detailed transaction records for regulatory compliance
+- Report suspicious transactions as per AML/CFT regulations
+</Note>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Transaction History" icon="clock-rotate-left" href="/guide/transactions">
+    View and manage cash-out transaction records
+  </Card>
+  
+  <Card title="Card Payments" icon="credit-card" href="/payments/card-payments">
+    Learn about card payment processing
+  </Card>
+</CardGroup>

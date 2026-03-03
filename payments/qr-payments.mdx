@@ -1,0 +1,478 @@
+---
+title: QR Payments
+description: Generate and scan QR codes for contactless payments via MasterPass, NIBSS, and BlueCode
+---
+
+NetPOS supports QR code-based payments through multiple providers, allowing merchants to generate QR codes for customers to scan or accept payments via displayed QR codes.
+
+## QR Payment Providers
+
+NetPOS integrates with three major QR payment providers:
+
+<CardGroup cols={3}>
+  <Card title="MasterPass QR" icon="qrcode">
+    MasterCard's QR payment solution with instant bitmap generation
+  </Card>
+  
+  <Card title="NIBSS QR" icon="qrcode">
+    Nigeria Inter-Bank Settlement System QR with auto-polling
+  </Card>
+  
+  <Card title="BlueCode" icon="qrcode">
+    European QR payment solution for contactless transactions
+  </Card>
+</CardGroup>
+
+## QR Payment Methods
+
+NetPOS offers two QR payment approaches:
+
+### 1. Merchant-Generated QR (Customer Scans)
+
+Merchants generate a QR code that customers scan with their banking app:
+
+<Steps>
+  <Step title="Enter Amount">
+    Merchant enters the transaction amount in the DisplayQrFragment
+  </Step>
+  
+  <Step title="Generate QR Code">
+    System generates a payment QR code via the contactless QR API
+  </Step>
+  
+  <Step title="Customer Scans">
+    Customer scans the displayed QR code with their mobile banking app
+  </Step>
+  
+  <Step title="Payment Complete">
+    Transaction is processed and merchant receives confirmation
+  </Step>
+</Steps>
+
+### 2. Provider QR Selection (Merchant Selects Provider)
+
+Merchants select from available QR providers (MasterPass, NIBSS, BlueCode):
+
+<Steps>
+  <Step title="Select Provider">
+    Choose from MasterPass QR, NIBSS QR, or BlueCode in QRFragment
+  </Step>
+  
+  <Step title="Enter Amount">
+    Input transaction amount in the amount dialog
+  </Step>
+  
+  <Step title="Display QR">
+    Provider-specific QR code is generated and displayed in bottom sheet
+  </Step>
+  
+  <Step title="Auto-Polling (NIBSS)">
+    For NIBSS, system automatically polls for payment confirmation
+  </Step>
+</Steps>
+
+## Merchant-Generated QR Implementation
+
+### DisplayQrFragment
+
+This fragment handles merchant-side QR code generation:
+
+```kotlin DisplayQrFragment.kt
+override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    super.onViewCreated(view, savedInstanceState)
+    initViews()
+    val user = Singletons.gson.fromJson(Prefs.getString(PREF_USER, ""), User::class.java)
+    netposID = user.netplus_id
+    userTID = user.terminal_id
+    name = user.business_name
+    email = CONTACTLESS_TRANSACTION_DEFAULT_EMAIL
+    
+    loader = RandomNumUtil.alertDialog(requireContext())
+    
+    binding.process.setOnClickListener {
+        processPayment()
+    }
+}
+```
+
+### QR Code Generation
+
+When merchant clicks process, the system generates a QR code:
+
+```kotlin
+private fun generateMerchantQr() {
+    loader.show()
+    val paymentWithQr = PayWithQrRequest(
+        terminalId = userTID.toString(),
+        netposId = Singletons.getConfigData()?.cardAcceptorIdCode ?: "",
+        amount = amount.text.toString(),
+        name = name.toString(),
+        email = email.toString(),
+        bank = RandomNumUtil.getBankName() ?: "",
+        NPmerchantId = RandomNumUtil.getNetPlusPayMid(),
+    )
+    
+    observeServerResponse(
+        viewModel.paymentWithQr(paymentWithQr),
+        loader,
+        compositeDisposable,
+        ioScheduler,
+        mainThreadScheduler,
+    ) {
+        showFragment(
+            targetFragment = DisplayQrResultFragment(),
+            className = "Display QR Result"
+        )
+    }
+}
+```
+
+### PayWithQrRequest Model
+
+The QR payment request includes:
+
+```kotlin PayWithQrRequest.kt
+data class PayWithQrRequest(
+    val terminalId: String,
+    val netposId: String,
+    val amount: String,
+    val name: String,
+    val email: String,
+    val bank: String,
+    val NPmerchantId: String
+)
+```
+
+### QR Code Display
+
+After successful generation, the QR code is displayed:
+
+```kotlin DisplayQrResultFragment.kt
+override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    super.onViewCreated(view, savedInstanceState)
+    
+    val displayQrResult = Prefs.getString(AppConstants.PAYMENT_WITH_QR_STRING, "")
+    val imageBytes = Base64.decode(displayQrResult, Base64.DEFAULT)
+    val decodedImage = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+    
+    if (displayQrResult.isNotEmpty()) {
+        Glide.with(requireContext()).load(decodedImage).into(binding.paymentQr)
+    }
+}
+```
+
+## Provider QR Implementation
+
+### QRFragment Provider Selection
+
+Merchants can select from available QR providers:
+
+```kotlin QRFragment.kt
+private fun setService() {
+    val listOfService = ArrayList<Service>()
+        .apply {
+            add(Service(0, "MasterPass QR", R.drawable.masterpass))
+            add(Service(1, "NIBSS QR", R.drawable.ic_qr_code))
+            add(Service(2, "BlueCode", R.drawable.ic_bluecode_logo))
+        }
+    adapter.submitList(listOfService)
+}
+```
+
+### Amount Dialog
+
+Before generating QR, merchants enter the amount:
+
+```kotlin
+private fun showAmountDialog(serviceId: Int) {
+    qrAmountDialog.show()
+    qrAmoutDialogBinding.proceed.setOnClickListener {
+        val amountDouble = qrAmoutDialogBinding.amount.text.toString().toDoubleOrNull()
+        amountDouble?.let {
+            qrAmountDialog.cancel()
+            when (serviceId) {
+                0 -> showMasterPassQRBottomSheetDialog(it)
+                1 -> showNibssQRBottomSheet(it)
+            }
+        }
+    }
+}
+```
+
+## MasterPass QR
+
+### QR Generation
+
+MasterPass QR codes are generated via the QRViewModel:
+
+```kotlin QRViewModel.kt
+fun getMasterPassQr(amount: Double) {
+    val qrRequestBody = JsonObject()
+    val user = Singletons.getCurrentlyLoggedInUser()!!
+    qrRequestBody.apply {
+        addProperty("amount", amount.toString())
+        addProperty("order_id", UUID.randomUUID().toString())
+        addProperty("merchant_id", user.netplus_id)
+        addProperty("currency_code", "NGN")
+        addProperty("country_code", "NG")
+        addProperty("business_name", user.business_name)
+        addProperty("merchant_city", "Lagos")
+    }
+    masterPassQRService.getStaticQr(qrRequestBody)
+        .subscribeOn(Schedulers.io())
+        .observeOn(AndroidSchedulers.mainThread())
+        .flatMap {
+            val bmp = BitmapFactory.decodeStream(it.byteStream())
+            if (bmp != null)
+                Single.just(bmp)
+            else
+                throw NullPointerException("Bitmap is null")
+        }
+        .subscribe { t1, t2 ->
+            t1?.let { bmp ->
+                _masterPassQrBitmap.value = Event(bmp)
+            }
+            t2?.let { error ->
+                qrErrorMessageMutableLiveData.value = Event("Error")
+                message.value = Event("An error occurred while fetching QR")
+            }
+        }.disposeWith(disposable)
+}
+```
+
+### Display MasterPass QR
+
+```kotlin
+private fun showMasterPassQRBottomSheetDialog(amount: Double) {
+    masterpassQrBottomSheetDialogBinding.progress.visibility = View.VISIBLE
+    masterpassQrBottomSheetDialogBinding.providerQr.visibility = View.GONE
+    masterpassQrBottomSheetDialogBinding.qr.setImageBitmap(null)
+    masterPassQrBottomSheetDialog.show()
+    viewModel.getMasterPassQr(amount)
+}
+```
+
+### Observe QR Bitmap
+
+```kotlin
+viewModel.masterPassQrBitmap.observe(viewLifecycleOwner) { event ->
+    event.getContentIfNotHandled()?.let { bitmap ->
+        masterpassQrBottomSheetDialogBinding.scanToPay.visibility = View.VISIBLE
+        masterpassQrBottomSheetDialogBinding.progress.visibility = View.GONE
+        masterpassQrBottomSheetDialogBinding.providerQr.visibility = View.VISIBLE
+        masterpassQrBottomSheetDialogBinding.qr.setImageBitmap(bitmap)
+    }
+}
+```
+
+## NIBSS QR
+
+### QR Generation with Auto-Polling
+
+NIBSS QR includes automatic transaction status polling:
+
+```kotlin
+fun getNibssQR(amount: Double) {
+    val start: Long = 111_111_111_111
+    val end: Long = 999_999_999_999
+    val range1 = (start..end).random()
+    val range2 = (start..end).random()
+    lastNibssOrderNumber.value = "${SimpleDateFormat("yMM", Locale.getDefault())
+        .format(Date(System.currentTimeMillis()))}$range1$range2"
+    
+    val jsonObject = JsonObject()
+    jsonObject.addProperty("amount", amount.toString())
+    jsonObject.addProperty("order_no", lastNibssOrderNumber.value!!)
+    
+    nibssQRService.getQr(jsonObject)
+        .subscribeOn(Schedulers.io())
+        .observeOn(AndroidSchedulers.mainThread())
+        .flatMap {
+            if (it.returnCode.isNullOrEmpty() || 
+                it.returnCode != "Success" || 
+                it.codeUrl.isNullOrEmpty())
+                throw Exception("Could not fetch QR code")
+            Single.just(encodeAsBitmap(it.codeUrl, 150, 150))
+        }
+        .subscribe { t1, t2 ->
+            t1?.let {
+                _nibssQRBitmap.value = Event(it)
+                runHandler() // Start auto-polling
+            }
+            t2?.let {
+                message.value = Event("Error")
+            }
+        }
+        .disposeWith(disposable)
+}
+```
+
+### Transaction Status Polling
+
+NIBSS QR automatically polls for payment confirmation:
+
+```kotlin
+private fun runHandler() {
+    if (retryAttempts > 15) {
+        stillHasRetryAttempts = false
+        message.value = Event("Too many attempts without response")
+        return
+    }
+    Handler(Looper.getMainLooper()).postDelayed({
+        queryTransaction()
+    }, 4000)
+}
+
+private fun queryTransaction() {
+    retryAttempts += 1
+    _reQuerying.value = Event(true)
+    lastNibssOrderNumber.value?.let {
+        val jsonObject = JsonObject()
+        jsonObject.addProperty("order_no", it)
+        nibssQRService.queryTransactionStatus(jsonObject)
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .doFinally { _reQuerying.value = Event(false) }
+            .subscribe { t1, t2 ->
+                t1?.let { nibssQRResponse ->
+                    when (nibssQRResponse.returnCode) {
+                        "Paying" -> runHandler()
+                        "Success" -> {
+                            stillHasRetryAttempts = false
+                            message.value = Event("Success, payment confirmed")
+                        }
+                        else -> {
+                            message.value = Event("Failed, payment failed")
+                            stillHasRetryAttempts = false
+                        }
+                    }
+                }
+                t2?.let {
+                    retryAttempts -= 1
+                    message.value = Event("Retrying")
+                }
+            }.disposeWith(disposable)
+    }
+}
+```
+
+### Polling UI Feedback
+
+```kotlin
+viewModel.reQuerying.observe(viewLifecycleOwner) { event ->
+    event.getContentIfNotHandled()?.let {
+        if (it) {
+            nibssQrBottomSheetDialogBinding.progress.visibility = View.VISIBLE
+            nibssQrBottomSheetDialogBinding.scanToPay.text = 
+                getString(R.string.req_trans)
+        } else {
+            nibssQrBottomSheetDialogBinding.progress.visibility = View.GONE
+            if (viewModel.stillHasRetryAttempts)
+                startNibssReQueryTimer()
+        }
+    }
+}
+```
+
+### Countdown Timer
+
+```kotlin
+private fun startNibssReQueryTimer() {
+    val timer = object : CountDownTimer(4000, 1000) {
+        override fun onTick(millisUntilFinished: Long) {
+            nibssQrBottomSheetDialogBinding.scanToPay.text = getString(
+                R.string.requerying_qr_transaction,
+                millisUntilFinished / 1000
+            )
+        }
+        override fun onFinish() {}
+    }
+    timer.start()
+}
+```
+
+## QR Payment Service
+
+The QR payment API endpoint:
+
+```kotlin QrPaymentService.kt
+interface QrPaymentService {
+    @POST("contactlessQr")
+    fun payWithQr(
+        @Body payWithQrRequest: PayWithQrRequest,
+    ): Single<Response<String>>
+}
+```
+
+## ViewModel Integration
+
+### ContactQrPaymentViewModel
+
+```kotlin ContactQrPaymentViewModel.kt
+fun paymentWithQr(payWithQrRequest: PayWithQrRequest) =
+    contactlessQrPaymentRepository.payWithQr(payWithQrRequest)
+        .flatMap {
+            if (it.isSuccessful) {
+                savePaymentWithQrResponse(it.body().toString())
+                Single.just(Resource.success(it.body()))
+            } else {
+                Single.just(Resource.error(it.errorBody()))
+            }
+        }
+
+private fun savePaymentWithQrResponse(data: String) {
+    Prefs.putString(AppConstants.PAYMENT_WITH_QR_STRING, gson.toJson(data))
+}
+```
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="QR Generation Failed">
+    **Error:** "An error occurred while fetching QR"
+    
+    **Cause:** API error, network issues, or invalid merchant configuration
+    
+    **Solution:** Verify merchant credentials and network connectivity
+  </Accordion>
+  
+  <Accordion title="NIBSS Polling Timeout">
+    **Error:** "Too many attempts without response"
+    
+    **Cause:** Customer did not complete payment within 15 polling attempts (60 seconds)
+    
+    **Solution:** Generate a new QR code and retry the transaction
+  </Accordion>
+  
+  <Accordion title="Invalid Amount">
+    **Error:** Amount validation fails
+    
+    **Cause:** Empty or non-numeric amount entered
+    
+    **Solution:** Enter a valid numeric amount
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Amount Validation" icon="circle-check">
+    Always validate amount before generating QR to avoid wasted API calls
+  </Card>
+  
+  <Card title="Loading States" icon="circle-check">
+    Show progress indicators during QR generation and polling
+  </Card>
+  
+  <Card title="Timeout Handling" icon="circle-check">
+    Implement appropriate timeouts for NIBSS polling (15 attempts max)
+  </Card>
+  
+  <Card title="Error Messages" icon="circle-check">
+    Provide clear feedback when QR generation or payment verification fails
+  </Card>
+</CardGroup>
+
+<Note>
+The QR code is encoded as a Base64 string in the API response and decoded to a Bitmap for display using Android's BitmapFactory.
+</Note>

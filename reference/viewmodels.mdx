@@ -1,0 +1,595 @@
+---
+title: ViewModels Reference
+description: Complete reference for all ViewModels implementing business logic and state management in NetPOS
+---
+
+## Overview
+
+NetPOS ViewModels follow Android Architecture Components pattern, managing UI-related data and business logic. All ViewModels extend `androidx.lifecycle.ViewModel` and use **LiveData** for reactive state updates.
+
+## Core ViewModels
+
+### AuthViewModel
+
+Handles user authentication, login, and password reset.
+
+```kotlin viewmodels/AuthViewModel.kt:26
+class AuthViewModel : ViewModel() {
+    private val disposables = CompositeDisposable()
+    var stormApiService: StormApiService? = null
+    
+    val authInProgress = MutableLiveData(false)
+    val passwordResetInProgress = MutableLiveData(false)
+    val usernameLiveData = MutableLiveData("")
+    val passwordLiveData = MutableLiveData("")
+    
+    private val _message = MutableLiveData<Event<String>>()
+    val message: LiveData<Event<String>> get() = _message
+    
+    private val _authDone = MutableLiveData<Event<Boolean>>()
+    val authDone: LiveData<Event<Boolean>> get() = _authDone
+}
+```
+
+<Accordion title="AuthViewModel Methods" defaultOpen>
+  <AccordionGroup>
+    <Accordion title="login()">
+      Standard email/password authentication:
+      ```kotlin viewmodels/AuthViewModel.kt:51
+      fun login() {
+          val username = usernameLiveData.value
+          val password = passwordLiveData.value
+          
+          if (username.isNullOrEmpty() || password.isNullOrEmpty()) {
+              _message.value = Event("All fields are required")
+              return
+          }
+          
+          if (!Patterns.EMAIL_ADDRESS.matcher(username).matches()) {
+              _message.value = Event("Please enter a valid email")
+              return
+          }
+          
+          auth(username, password)
+      }
+      ```
+    </Accordion>
+    
+    <Accordion title="login(deviceId: String)">
+      EasyPOS authentication with device binding:
+      ```kotlin viewmodels/AuthViewModel.kt:65
+      fun login(deviceId: String) {
+          val credentials = JsonObject().apply {
+              addProperty("username", username)
+              addProperty("password", password)
+              addProperty("deviceId", deviceId)
+          }
+          
+          stormApiService!!.userToken(credentials)
+              .flatMap { response ->
+                  val userToken = response.token
+                  Prefs.putString(PREF_USER_TOKEN, userToken)
+                  parseUserFromJWT(userToken)
+              }
+              .subscribe { res, error ->
+                  // Handle authentication result
+              }
+      }
+      ```
+    </Accordion>
+    
+    <Accordion title="resetPassword()">
+      Password reset flow:
+      ```kotlin viewmodels/AuthViewModel.kt:378
+      fun resetPassword() {
+          val username = usernameLiveData.value
+          if (username.isNullOrEmpty()) {
+              _message.value = Event("Please enter your email address")
+              return
+          }
+
+          val payload = JsonObject().apply {
+              addProperty("username", username)
+          }
+          
+          stormApiService!!.passwordReset(payload)
+              .subscribeOn(Schedulers.io())
+              .observeOn(AndroidSchedulers.mainThread())
+              .subscribe { response, error ->
+                  if (response?.code() == 200) {
+                      _message.value = Event("Password reset email sent")
+                  }
+              }
+      }
+      ```
+    </Accordion>
+  </AccordionGroup>
+</Accordion>
+
+### TransactionsViewModel
+
+Manages card transactions, refunds, and receipt printing.
+
+```kotlin viewmodels/TransactionsViewModel.kt:28
+class TransactionsViewModel(private val appDatabase: AppDatabase) : ViewModel() {
+    var cardData: CardData? = null
+    private val compositeDisposable = CompositeDisposable()
+    
+    val lastTransactionResponse = MutableLiveData<TransactionResponse>()
+    val inProgress = MutableLiveData(false)
+    
+    private val _message = MutableLiveData<Event<String>>()
+    val message: LiveData<Event<String>> get() = _message
+    
+    private val _shouldRefreshNibssKeys = MutableLiveData<Event<Boolean>>()
+    val shouldRefreshNibssKeys: LiveData<Event<Boolean>> get() = _shouldRefreshNibssKeys
+    
+    val pagedTransaction: LiveData<PagedList<TransactionResponse>>
+}
+```
+
+<Accordion title="Transaction Operations">
+  <AccordionGroup>
+    <Accordion title="Refund Transaction">
+      ```kotlin viewmodels/TransactionsViewModel.kt:178
+      private fun refundTransaction(
+          transactionResponse: TransactionResponse, 
+          context: Context
+      ) {
+          val originalDataElements = transactionResponse.toOriginalDataElements()
+
+          val hostConfig = HostConfig(
+              NetPosTerminalConfig.getTerminalId(),
+              NetPosTerminalConfig.connectionData,
+              NetPosTerminalConfig.getKeyHolder()!!,
+              NetPosTerminalConfig.getConfigData()!!
+          )
+
+          val requestData = TransactionRequestData(
+              transactionType = TransactionType.REVERSAL,
+              amount = originalDataElements.originalAmount,
+              originalDataElements = originalDataElements,
+              accountType = accountType
+          )
+          
+          inProgress.value = true
+          TransactionProcessor(hostConfig)
+              .processTransaction(context, requestData, cardData!!)
+              .flatMap { response ->
+                  if (response.responseCode == "A3") {
+                      _shouldRefreshNibssKeys.postValue(Event(true))
+                  }
+                  appDatabase.transactionResponseDao().updateTransaction(response)
+              }
+              .subscribe { response, error ->
+                  // Handle refund result
+              }
+      }
+      ```
+    </Accordion>
+    
+    <Accordion title="Print Receipt">
+      ```kotlin viewmodels/TransactionsViewModel.kt:300
+      fun startPrintingReceipt(
+          context: Context,
+          isMerchantCopy: Boolean = false,
+          printBoth: Boolean = false
+      ) {
+          inProgress.value = true
+          val transactionResponse = lastTransactionResponse.value
+              ?.copy(localDate_13 = localDate_13 + PDF_REPRINT_IDENTIFIER)
+              .apply { this?.cardExpiry = "" }
+          
+          transactionResponse?.print(context, isMerchantCopy, isReprint = true)
+              ?.subscribeOn(Schedulers.io())
+              ?.observeOn(AndroidSchedulers.mainThread())
+              ?.subscribe { success, error ->
+                  if (printBoth && !isMerchantCopy) {
+                      startPrintingReceipt(context, isMerchantCopy = true, printBoth = true)
+                  } else {
+                      _done.value = true
+                      inProgress.value = false
+                  }
+              }
+      }
+      ```
+    </Accordion>
+    
+    <Accordion title="Insert to Database">
+      ```kotlin viewmodels/TransactionsViewModel.kt:131
+      fun insertIntoDatabase(transactionResponse: List<TransactionResponse>) {
+          compositeDisposable.add(
+              appDatabase.transactionResponseDao()
+                  .insertNewTransaction(transactionResponse)
+                  .subscribeOn(Schedulers.io())
+                  .observeOn(AndroidSchedulers.mainThread())
+                  .subscribe { rowIds, error ->
+                      rowIds?.let { Timber.d("Inserted ${it.size} transactions") }
+                      error?.let { Timber.e(it.localizedMessage) }
+                  }
+          )
+      }
+      ```
+    </Accordion>
+  </AccordionGroup>
+</Accordion>
+
+### QRViewModel
+
+Handles QR code generation for contactless payments (MasterPass, NIBSS, Zenith).
+
+```kotlin viewmodels/QRViewModel.kt:28
+open class QRViewModel(
+    private val masterPassQRService: MasterPassQRService,
+    private val nibssQRService: NibssQRService,
+    private val zenithQRService: ZenithQrService,
+    private val blueCodeService: BlueCodeService
+) : ViewModel() {
+    private var retryAttempts = 1
+    var stillHasRetryAttempts = true
+    val disposable = CompositeDisposable()
+    
+    private val _nibssQRBitmap = MutableLiveData<Event<Bitmap>>()
+    val nibssQRBitmap: LiveData<Event<Bitmap>> get() = _nibssQRBitmap
+    
+    val message = MediatorLiveData<Event<String>>()
+}
+```
+
+<Accordion title="QR Generation Methods">
+  <AccordionGroup>
+    <Accordion title="MasterPass QR">
+      ```kotlin viewmodels/QRViewModel.kt:112
+      fun getMasterPassQr(amount: Double) {
+          val qrRequestBody = JsonObject().apply {
+              val user = Singletons.getCurrentlyLoggedInUser()!!
+              addProperty("amount", amount.toString())
+              addProperty("order_id", UUID.randomUUID().toString())
+              addProperty("merchant_id", user.netplus_id)
+              addProperty("currency_code", "NGN")
+              addProperty("business_name", user.business_name)
+              addProperty("merchant_city", "Lagos")
+          }
+          
+          masterPassQRService.getStaticQr(qrRequestBody)
+              .subscribeOn(Schedulers.io())
+              .flatMap { response ->
+                  val bmp = BitmapFactory.decodeStream(response.byteStream())
+                  if (bmp != null) Single.just(bmp)
+                  else throw NullPointerException("Bitmap is null")
+              }
+              .subscribe { bitmap, error ->
+                  bitmap?.let { _masterPassQrBitmap.value = Event(it) }
+              }
+      }
+      ```
+    </Accordion>
+    
+    <Accordion title="NIBSS QR with Auto-Query">
+      ```kotlin viewmodels/QRViewModel.kt:155
+      fun getNibssQR(amount: Double) {
+          val orderNumber = generateOrderNumber()
+          lastNibssOrderNumber.value = orderNumber
+          
+          val jsonObject = JsonObject().apply {
+              addProperty("amount", amount.toString())
+              addProperty("order_no", orderNumber)
+          }
+          
+          nibssQRService.getQr(jsonObject)
+              .flatMap { response ->
+                  if (response.returnCode != "Success") {
+                      throw Exception("Could not fetch QR code")
+                  }
+                  Single.just(encodeAsBitmap(response.codeUrl, 150, 150))
+              }
+              .subscribe { bitmap, error ->
+                  bitmap?.let {
+                      _nibssQRBitmap.value = Event(it)
+                      runHandler() // Start auto-query
+                  }
+              }
+      }
+      
+      private fun runHandler() {
+          if (retryAttempts > 15) {
+              stillHasRetryAttempts = false
+              message.value = Event("Too many attempts without response")
+              return
+          }
+          Handler(Looper.getMainLooper()).postDelayed({
+              queryTransaction()
+          }, 4000)
+      }
+      ```
+    </Accordion>
+    
+    <Accordion title="Zenith QR with Merchant Registration">
+      ```kotlin viewmodels/QRViewModel.kt:235
+      fun getZenithQR(type: String, amount: Double) {
+          val req = if (amount == 0.0) 
+              zenithQRService.getZenithQr(type) 
+          else 
+              zenithQRService.getDynamicQr(type, amount.toInt().toString())
+          
+          req.subscribeOn(Schedulers.io())
+              .flatMap { response ->
+                  val bitmap = response.qrCode.decodeBase64ToBitmap()
+                  if (bitmap != null) Single.just(bitmap)
+                  else throw NullPointerException("Bitmap is null")
+              }
+              .subscribe { bitmap, error ->
+                  bitmap?.let { _zenithQr.value = Event(it) }
+                  error?.let {
+                      val responseBody = it.getResponseBody()
+                      if (it.isHttpStatusCode(404) && 
+                          responseBody.contains("Merchant not registered")) {
+                          _createZenithMerchant.value = Event(type)
+                      }
+                  }
+              }
+      }
+      
+      fun registerZenithMerchant() {
+          val payload = createZenithMerchantPayload.value!!
+          zenithQRService.createZenithQRMerchant(payload)
+              .subscribeOn(Schedulers.io())
+              .observeOn(AndroidSchedulers.mainThread())
+              .subscribe { response, error ->
+                  response?.let {
+                      _zenithQrRegistrationDone.value = Event(true)
+                  }
+              }
+      }
+      ```
+    </Accordion>
+  </AccordionGroup>
+</Accordion>
+
+### DashBoardViewModel
+
+Manages main dashboard state and navigation.
+
+### SalesViewModel
+
+Handles sales transactions and payment processing.
+
+### PayByZenithViewModel
+
+Manages Zenith Bank pay-by-transfer operations.
+
+### NipViewModel
+
+Handles NIBSS Instant Payment (NIP) transactions.
+
+### UtilitiesViewModel
+
+Manages utility payments (airtime, data, bills).
+
+### ContactQrPaymentViewModel
+
+Handles contactless QR payment flows.
+
+### BlueCodeViewModel
+
+Manages BlueCode payment integration.
+
+## ViewModel Factories
+
+Custom ViewModelFactory for dependency injection:
+
+```kotlin viewmodels/NetPosViewModelFactories.kt
+class TransactionsViewModelFactory(
+    private val appDatabase: AppDatabase
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(TransactionsViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return TransactionsViewModel(appDatabase) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
+```
+
+## Common ViewModel Patterns
+
+### LiveData Encapsulation
+
+```kotlin
+private val _message = MutableLiveData<Event<String>>()
+val message: LiveData<Event<String>> get() = _message
+```
+
+<Info>
+  **Pattern**: Expose immutable `LiveData` publicly while keeping `MutableLiveData` private.
+</Info>
+
+### Single-Use Events
+
+```kotlin
+data class Event<out T>(private val content: T) {
+    private var hasBeenHandled = false
+
+    fun getContentIfNotHandled(): T? {
+        return if (hasBeenHandled) {
+            null
+        } else {
+            hasBeenHandled = true
+            content
+        }
+    }
+
+    fun peekContent(): T = content
+}
+```
+
+<Note>
+  `Event` wrapper prevents re-emission of single-use events on configuration changes.
+</Note>
+
+### RxJava Disposal
+
+```kotlin
+class AuthViewModel : ViewModel() {
+    private val disposables = CompositeDisposable()
+    
+    fun someOperation() {
+        apiService.getData()
+            .subscribe { data, error ->
+                // Handle result
+            }
+            .disposeWith(disposables)
+    }
+    
+    override fun onCleared() {
+        super.onCleared()
+        disposables.clear()
+    }
+}
+```
+
+<Warning>
+  Always dispose RxJava subscriptions in `onCleared()` to prevent memory leaks.
+</Warning>
+
+## State Management Patterns
+
+### Loading State
+
+```kotlin
+val inProgress = MutableLiveData(false)
+
+fun performOperation() {
+    apiService.getData()
+        .doOnSubscribe { inProgress.postValue(true) }
+        .doFinally { inProgress.postValue(false) }
+        .subscribe { result, error ->
+            // Handle result
+        }
+}
+```
+
+### Error Handling
+
+```kotlin
+private val _message = MutableLiveData<Event<String>>()
+
+apiService.getData()
+    .subscribe { result, error ->
+        error?.let {
+            val httpException = it as? HttpException
+            val errorMessage = httpException?.response()?.errorBody()?.string()
+                ?: "Unexpected error"
+            _message.value = Event(errorMessage)
+        }
+    }
+```
+
+## Pagination with LiveData
+
+```kotlin viewmodels/TransactionsViewModel.kt:88
+val pagedTransaction: LiveData<PagedList<TransactionResponse>>
+
+init {
+    val config = PagedList.Config.Builder()
+        .setPageSize(20)
+        .setEnablePlaceholders(false)
+        .build()
+    
+    val transactionBoundaryCallBack = TransactionBoundaryCallBack(
+        params = hashMapOf("terminalId" to terminalId),
+        stormApiService = stormApiService,
+        transactionDao = appDatabase.transactionResponseDao()
+    )
+
+    pagedTransaction = LivePagedListBuilder(
+        appDatabase.transactionResponseDao().getTransactions(terminalId),
+        config
+    ).setBoundaryCallback(transactionBoundaryCallBack)
+        .build()
+}
+```
+
+## MediatorLiveData Usage
+
+```kotlin viewmodels/QRViewModel.kt:41
+val message = MediatorLiveData<Event<String>>()
+
+private val emptyListLiveData = _paginationHelper.switchMap {
+    it.emptyResultLiveData
+}
+
+init {
+    message.addSource(emptyListLiveData) {
+        message.value = Event("No results found")
+    }
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="ViewModel Scope" icon="circle">
+    ViewModels survive configuration changes but are cleared when activity/fragment is destroyed
+  </Card>
+  
+  <Card title="No Context References" icon="ban">
+    Never store Activity/Fragment context in ViewModel. Use `AndroidViewModel` if Application context needed.
+  </Card>
+  
+  <Card title="Reactive Streams" icon="arrows-spin">
+    Use RxJava or Coroutines for async operations, observe results with LiveData
+  </Card>
+  
+  <Card title="Single Responsibility" icon="check">
+    Each ViewModel handles one feature area (Auth, Transactions, QR, etc.)
+  </Card>
+</CardGroup>
+
+## Testing ViewModels
+
+```kotlin
+class AuthViewModelTest {
+    @get:Rule
+    val instantTaskExecutorRule = InstantTaskExecutorRule()
+    
+    private lateinit var viewModel: AuthViewModel
+    private lateinit var mockApiService: StormApiService
+    
+    @Before
+    fun setup() {
+        mockApiService = mock()
+        viewModel = AuthViewModel().apply {
+            stormApiService = mockApiService
+        }
+    }
+    
+    @Test
+    fun `login with empty credentials shows error`() {
+        viewModel.usernameLiveData.value = ""
+        viewModel.passwordLiveData.value = ""
+        
+        viewModel.login()
+        
+        assertEquals("All fields are required", 
+            viewModel.message.value?.peekContent())
+    }
+}
+```
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/reference/architecture">
+    Overall MVVM architecture
+  </Card>
+  
+  <Card title="Models" icon="database" href="/reference/models">
+    Data models used by ViewModels
+  </Card>
+  
+  <Card title="Services" icon="network-wired" href="/reference/services">
+    API services called by ViewModels
+  </Card>
+</CardGroup>

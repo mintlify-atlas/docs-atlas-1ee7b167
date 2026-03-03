@@ -1,0 +1,501 @@
+---
+title: Network Setup
+description: Configure network connectivity and NIBSS communication for NetPOS terminals
+---
+
+## Overview
+
+NetPOS requires reliable network connectivity to communicate with NIBSS (Nigeria Inter-Bank Settlement System), backend APIs, and MQTT services. This guide covers network configuration, requirements, and troubleshooting.
+
+## Network Requirements
+
+<CardGroup cols={2}>
+  <Card title="Internet Connection" icon="wifi">
+    - **Type**: Wi-Fi or Mobile Data
+    - **Speed**: Minimum 2G/3G (4G recommended)
+    - **Stability**: Stable connection during transactions
+  </Card>
+  
+  <Card title="Firewall Rules" icon="shield">
+    - **NIBSS**: Allow outbound to `196.6.103.18:4016`
+    - **MQTT**: Allow `storm-mqtt.netpluspay.com`
+    - **API**: Allow `*.netpluspay.com`
+  </Card>
+  
+  <Card title="SSL/TLS" icon="lock">
+    - **Protocol**: TLS 1.2 or higher
+    - **Certificates**: Valid SSL certificates required
+    - **Encryption**: End-to-end encryption enabled
+  </Card>
+  
+  <Card title="Ports" icon="network-wired">
+    - **NIBSS**: Port 4016 (SSL)
+    - **MQTT**: Port 8883 (SSL) or 1883
+    - **HTTPS**: Port 443
+  </Card>
+</CardGroup>
+
+## NIBSS Connection
+
+NetPOS connects to NIBSS using the ISO 8583 protocol over SSL/TLS.
+
+### Connection Parameters
+
+<ParamField path="ipAddress" type="string" required>
+  NIBSS server IP address
+  
+  **Production**: `196.6.103.18`
+</ParamField>
+
+<ParamField path="ipPort" type="number" required>
+  NIBSS server port
+  
+  **Production**: `4016`
+</ParamField>
+
+<ParamField path="isSSL" type="boolean" required>
+  Enable SSL/TLS encryption
+  
+  **Value**: `true` (always required)
+</ParamField>
+
+### Connection Configuration
+
+The connection is established using:
+
+```kotlin
+ConnectionData(
+    ipAddress = "196.6.103.18",
+    ipPort = 4016,
+    isSSL = true
+)
+```
+
+<Note>
+  Connection parameters are automatically loaded from `ConfigurationData` during terminal initialization.
+</Note>
+
+## MQTT Integration
+
+NetPOS uses MQTT for real-time notifications and remote terminal management.
+
+### MQTT Broker Configuration
+
+<Tabs>
+  <Tab title="Production">
+    ```properties
+    base.url.netpos.mqtt=storm-mqtt.netpluspay.com
+    ```
+    
+    - **Host**: `storm-mqtt.netpluspay.com`
+    - **Port**: 8883 (SSL) or 1883 (non-SSL)
+    - **Protocol**: MQTT 3.1.1 or 5.0
+  </Tab>
+  
+  <Tab title="Staging">
+    ```properties
+    base.url.netpos.mqtt=storm-mqtt.test.netpluspay.com
+    ```
+    
+    - **Host**: `storm-mqtt.test.netpluspay.com`
+    - **Port**: 8883 (SSL) or 1883 (non-SSL)
+    - **Protocol**: MQTT 3.1.1 or 5.0
+  </Tab>
+</Tabs>
+
+### MQTT Topics
+
+NetPOS subscribes to specific topics for different events:
+
+<AccordionGroup>
+  <Accordion title="Terminal Configuration">
+    **Topic**: `mqtt.pos.terminal_config.event`
+    
+    Used for:
+    - Remote configuration updates
+    - Terminal parameter changes
+    - Key rotation notifications
+  </Accordion>
+  
+  <Accordion title="Transaction Notifications">
+    **Topic**: `mqtt.pos.transaction.event`
+    
+    Used for:
+    - Real-time transaction updates
+    - Payment confirmations
+    - Status notifications
+  </Accordion>
+  
+  <Accordion title="System Events">
+    **Topic**: `mqtt.pos.system.event`
+    
+    Used for:
+    - App updates
+    - System maintenance notifications
+    - Emergency broadcasts
+  </Accordion>
+</AccordionGroup>
+
+### MQTT Connection Handling
+
+```kotlin
+// Connection established
+onConnected() {
+    Timber.d("MQTT Connected")
+    // Subscribe to topics
+}
+
+// Connection failed
+onFailure(exception: Throwable) {
+    Timber.e("Connection failed: ${exception.localizedMessage}")
+    // Retry connection
+}
+
+// Message received
+onMessageReceived(topic: String, message: String) {
+    // Process event based on topic
+}
+```
+
+## API Endpoints
+
+NetPOS communicates with multiple backend services:
+
+### Storm API
+
+<ParamField path="base.url.storm.utilities" type="string">
+  **Production**: `https://storm-utilities.netpluspay.com/`
+  
+  **Staging**: `http://storm-utilities.test.netpluspay.com/`
+</ParamField>
+
+Services:
+- Transaction management
+- End-of-day reports
+- User authentication
+- Bills payment
+
+### NetPOS Gateway
+
+<ParamField path="STRING_DEFAULT_BASE_URL" type="string">
+  Main NetPOS API endpoint (configured in `local.properties`)
+</ParamField>
+
+Services:
+- Card transactions
+- Transaction history
+- Merchant operations
+
+### Zenith API
+
+<ParamField path="STRING_ZENITH_BASE_URL" type="string">
+  Zenith Bank-specific API endpoint
+</ParamField>
+
+Services:
+- Pay by transfer
+- Account verification
+- QR payments
+
+### QR Payment API
+
+<ParamField path="STRING_CONTACTLESS_PAYMENT_WITH_QR_BASE_URL" type="string">
+  Contactless and QR payment services
+</ParamField>
+
+Services:
+- NIBSS QR
+- MasterPass QR
+- BlueCode
+- Zenith QR
+
+## Network Error Handling
+
+NetPOS implements comprehensive error handling for network issues:
+
+### Common Network Errors
+
+<Accordion title="Connection Timeout">
+  **Error**: "Connection timed out, failed to receive response from remote server"
+  
+  **Causes**:
+  - Slow network connection
+  - Server not responding
+  - Network congestion
+  
+  **Resolution**:
+  - Check internet connectivity
+  - Retry transaction
+  - Switch to alternate network (Wi-Fi ↔ Mobile Data)
+</Accordion>
+
+<Accordion title="No Internet Connection">
+  **Error**: "Could not connect to the internet, check your connection settings and try again"
+  
+  **Causes**:
+  - No active network connection
+  - Airplane mode enabled
+  - Network disabled
+  
+  **Resolution**:
+  - Enable Wi-Fi or Mobile Data
+  - Disable airplane mode
+  - Check device network settings
+</Accordion>
+
+<Accordion title="Server Unreachable">
+  **Error**: "Could not connect with remote server, check your connection settings and try again"
+  
+  **Causes**:
+  - Firewall blocking connection
+  - Incorrect server address
+  - Server maintenance
+  
+  **Resolution**:
+  - Verify firewall rules
+  - Check server IP and port
+  - Contact support if server is down
+</Accordion>
+
+<Accordion title="Port Unreachable">
+  **Error**: "Could not connect with remote server, port is unreachable"
+  
+  **Causes**:
+  - Port blocked by firewall
+  - Wrong port configuration
+  - Network policy restrictions
+  
+  **Resolution**:
+  - Check firewall allows port 4016
+  - Verify port configuration
+  - Contact network administrator
+</Accordion>
+
+<Accordion title="Malformed URL">
+  **Error**: "Malformed url, check your connection settings and try again"
+  
+  **Causes**:
+  - Invalid URL format
+  - Configuration error
+  - Incorrect endpoint
+  
+  **Resolution**:
+  - Verify API endpoints in configuration
+  - Check `local.properties` URLs
+  - Reconfigure terminal
+</Accordion>
+
+<Accordion title="Socket Errors">
+  **Errors**:
+  - "Could not bind socket to local address or port"
+  - "Could not create socket"
+  
+  **Causes**:
+  - Port already in use
+  - Network interface error
+  - System resource limitation
+  
+  **Resolution**:
+  - Restart application
+  - Restart device
+  - Check for conflicting apps
+</Accordion>
+
+<Accordion title="Host Resolution">
+  **Error**: "Host address could not be recognized"
+  
+  **Causes**:
+  - DNS resolution failure
+  - Invalid hostname
+  - DNS server not responding
+  
+  **Resolution**:
+  - Check DNS settings
+  - Use IP address instead of hostname
+  - Try alternate DNS (8.8.8.8)
+</Accordion>
+
+### Error Detection
+
+Check if an error is network-related:
+
+```kotlin
+if (ConnectionErrorConstants.isConnectionError(responseMessage)) {
+    // Handle network error
+    // Prompt user to check connection
+    // Offer retry option
+}
+```
+
+## Network Monitoring
+
+NetPOS monitors network status to ensure transaction reliability:
+
+### Connection State
+
+```kotlin
+// Check network availability
+val isConnected = context.isNetworkAvailable()
+
+if (!isConnected) {
+    // Show offline message
+    // Queue transactions for later
+    // Disable payment options
+}
+```
+
+### Network Type Detection
+
+```kotlin
+when (networkType) {
+    ConnectivityManager.TYPE_WIFI -> {
+        // Optimal connection
+    }
+    ConnectivityManager.TYPE_MOBILE -> {
+        // Mobile data - may be slower
+    }
+    else -> {
+        // Unknown or no connection
+    }
+}
+```
+
+## SSL/TLS Configuration
+
+### Certificate Validation
+
+NetPOS validates SSL certificates for all secure connections:
+
+- NIBSS connections require valid SSL certificates
+- MQTT broker must have valid TLS certificate
+- API endpoints must use HTTPS with valid certificates
+
+<Warning>
+  Do not disable certificate validation in production builds. This creates serious security vulnerabilities.
+</Warning>
+
+### Supported TLS Versions
+
+- **Minimum**: TLS 1.2
+- **Recommended**: TLS 1.3
+- **Cipher Suites**: Strong encryption required
+
+## Firewall Configuration
+
+Ensure your network allows these connections:
+
+### Outbound Rules Required
+
+| Service | Protocol | Destination | Port |
+|---------|----------|-------------|------|
+| NIBSS | TCP/SSL | 196.6.103.18 | 4016 |
+| Storm MQTT (Prod) | TCP/SSL | storm-mqtt.netpluspay.com | 8883 |
+| Storm MQTT (Test) | TCP/SSL | storm-mqtt.test.netpluspay.com | 8883 |
+| Storm API (Prod) | HTTPS | storm-utilities.netpluspay.com | 443 |
+| Storm API (Test) | HTTP/HTTPS | storm-utilities.test.netpluspay.com | 80/443 |
+| NetPOS API | HTTPS | api.netpluspay.com | 443 |
+
+### Network Security
+
+<Steps>
+  <Step title="Allow NIBSS Connection">
+    Configure firewall to allow outbound connections to NIBSS:
+    
+    ```
+    Allow: TCP 196.6.103.18:4016 (Outbound)
+    Protocol: SSL/TLS
+    ```
+  </Step>
+  
+  <Step title="Allow MQTT Broker">
+    Enable MQTT communication:
+    
+    ```
+    Allow: TCP storm-mqtt.netpluspay.com:8883 (Outbound)
+    Protocol: MQTT over SSL
+    ```
+  </Step>
+  
+  <Step title="Allow API Endpoints">
+    Enable backend API access:
+    
+    ```
+    Allow: HTTPS *.netpluspay.com:443 (Outbound)
+    Protocol: HTTPS
+    ```
+  </Step>
+</Steps>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Connection Stability" icon="signal">
+    - Use Wi-Fi for bulk operations
+    - Ensure stable connection during transactions
+    - Monitor network quality
+  </Card>
+  
+  <Card title="Retry Logic" icon="rotate">
+    - Implement automatic retry for network failures
+    - Use exponential backoff
+    - Limit retry attempts
+  </Card>
+  
+  <Card title="Offline Handling" icon="wifi-slash">
+    - Queue transactions when offline
+    - Inform users of connection status
+    - Sync when connection restored
+  </Card>
+  
+  <Card title="Security" icon="shield-halved">
+    - Always use SSL/TLS
+    - Validate certificates
+    - Never expose credentials
+  </Card>
+</CardGroup>
+
+## Testing Network Connectivity
+
+### Manual Tests
+
+<Steps>
+  <Step title="Ping NIBSS Server">
+    ```bash
+    ping 196.6.103.18
+    ```
+    
+    Should receive responses confirming connectivity.
+  </Step>
+  
+  <Step title="Test Port Connectivity">
+    ```bash
+    telnet 196.6.103.18 4016
+    # or
+    nc -zv 196.6.103.18 4016
+    ```
+    
+    Should connect successfully.
+  </Step>
+  
+  <Step title="Verify MQTT Broker">
+    ```bash
+    ping storm-mqtt.netpluspay.com
+    ```
+    
+    Should resolve and respond.
+  </Step>
+  
+  <Step title="Test API Endpoints">
+    ```bash
+    curl -I https://storm-utilities.netpluspay.com/
+    ```
+    
+    Should return HTTP 200 or valid response.
+  </Step>
+</Steps>
+
+## See Also
+
+- [Configuration](/terminal/configuration) - Terminal configuration setup
+- [Troubleshooting](/terminal/troubleshooting) - Resolve network issues
+- [White-Label Setup](/terminal/white-label-setup) - Bank-specific configurations

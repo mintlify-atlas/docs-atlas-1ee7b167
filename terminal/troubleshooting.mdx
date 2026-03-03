@@ -1,0 +1,723 @@
+---
+title: Troubleshooting
+description: Diagnose and resolve common NetPOS terminal issues
+---
+
+## Overview
+
+This guide helps you diagnose and resolve common issues with NetPOS terminals, including configuration errors, network problems, and transaction failures.
+
+## Configuration Issues
+
+### Terminal Configuration Failed
+
+<Accordion title="Symptom">
+  Error message: "Terminal configuration failed" or status code `-1`
+</Accordion>
+
+<Accordion title="Possible Causes">
+  - No internet connection
+  - NIBSS server unreachable
+  - Invalid terminal ID
+  - Incorrect encryption keys
+  - Expired certificates
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Verify Network Connectivity">
+      - Check internet connection is active
+      - Test connection to NIBSS server:
+        ```bash
+        ping 196.6.103.18
+        ```
+      - Ensure port 4016 is accessible
+      - Switch between Wi-Fi and mobile data
+    </Step>
+    
+    <Step title="Validate Terminal ID">
+      - Confirm terminal ID is correct
+      - Check logged-in user has valid `terminal_id`
+      - Verify terminal ID is registered with NIBSS
+      - Default test ID: `2057H63U` (for testing only)
+    </Step>
+    
+    <Step title="Check Configuration Data">
+      - Verify NIBSS IP: `196.6.103.18`
+      - Verify NIBSS Port: `4016`
+      - Confirm SSL is enabled: `isSSL = true`
+      - Check encryption keys are correct for environment
+    </Step>
+    
+    <Step title="Force Reconfiguration">
+      - Clear configuration data from SharedPreferences
+      - Clear `LAST_POS_CONFIGURATION_TIME`
+      - Restart application
+      - Configuration will run automatically
+    </Step>
+  </Steps>
+</Accordion>
+
+### Call Home Failed
+
+<Accordion title="Symptom">
+  Error: "call home failed" - Terminal cannot validate existing configuration
+</Accordion>
+
+<Accordion title="Possible Causes">
+  - Session key expired
+  - Configuration data corrupted
+  - NIBSS server rejected request (response != "00")
+  - Network timeout
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Check Session Key">
+      - Verify `clearSessionKey` is stored correctly
+      - Session keys expire periodically
+      - Full reconfiguration will download new keys
+    </Step>
+    
+    <Step title="Trigger Full Reconfiguration">
+      The system automatically triggers full reconfiguration if call home fails:
+      
+      ```kotlin
+      callHome(context).onErrorResumeNext {
+          // Automatically falls back to full configuration
+          configureTerminal(context)
+      }
+      ```
+      
+      No manual intervention needed - just retry the operation.
+    </Step>
+    
+    <Step title="Verify Device Serial">
+      - Device serial is retrieved via `NetPosSdk.getDeviceSerial()`
+      - Must match registered device in NIBSS
+      - Contact support if device serial mismatch
+    </Step>
+  </Steps>
+</Accordion>
+
+### Terminal Not Configured
+
+<Accordion title="Symptom">
+  Message: "Terminal not configured" when attempting transactions
+</Accordion>
+
+<Accordion title="Possible Causes">
+  - First-time setup not completed
+  - Configuration cleared
+  - Keys not downloaded
+  - ConfigData or KeyHolder is null
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Check Configuration Status">
+      ```kotlin
+      val keyHolder = NetPosTerminalConfig.getKeyHolder()
+      val configData = NetPosTerminalConfig.getConfigData()
+      
+      if (keyHolder == null || configData == null) {
+          // Terminal needs configuration
+          NetPosTerminalConfig.init(context)
+      }
+      ```
+    </Step>
+    
+    <Step title="Monitor Configuration Broadcast">
+      Listen for configuration completion:
+      
+      ```kotlin
+      LocalBroadcastManager.getInstance(context)
+          .registerReceiver(object : BroadcastReceiver() {
+              override fun onReceive(context: Context, intent: Intent) {
+                  val status = intent.getIntExtra(CONFIGURATION_STATUS, -99)
+                  when (status) {
+                      1 -> // Success - terminal ready
+                      -1 -> // Failed - show error
+                      0 -> // In progress - show loading
+                  }
+              }
+          }, IntentFilter(CONFIGURATION_ACTION))
+      ```
+    </Step>
+    
+    <Step title="Wait for Completion">
+      - Configuration takes 10-30 seconds
+      - Ensure stable internet during process
+      - Do not force-close the app
+      - Status `1` indicates success
+    </Step>
+  </Steps>
+</Accordion>
+
+### TPK Key Write Failed
+
+<Accordion title="Symptom">
+  Terminal PIN Key (TPK) not written to secure storage
+</Accordion>
+
+<Accordion title="Possible Causes">
+  - Hardware security module error
+  - Invalid TPK index
+  - Insufficient permissions
+  - Device compatibility issue
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Verify Device Compatibility">
+      - Check device has hardware security support
+      - Confirm device model is supported
+      - Test on known-compatible device
+    </Step>
+    
+    <Step title="Check TPK Parameters">
+      ```kotlin
+      writeTpkKey(
+          DeviceConfig.TPKIndex,  // Correct index
+          clearPinKey,            // Valid key
+          context                 // Valid context
+      )
+      ```
+    </Step>
+    
+    <Step title="Fallback Storage">
+      TPK is also stored in SharedPreferences:
+      
+      ```kotlin
+      Prefs.putString(CLEAR_PIN_KEY, clearPinKey)
+      val storedKey = Prefs.getString(CLEAR_PIN_KEY, "")
+      ```
+      
+      Use stored key if hardware write fails.
+    </Step>
+  </Steps>
+</Accordion>
+
+## Network Issues
+
+### Connection Timeout
+
+<Accordion title="Symptom">
+  "Connection timed out, failed to receive response from remote server"
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Check Network Speed">
+      - Test internet speed (minimum 2G/3G)
+      - Switch to faster network if available
+      - Use Wi-Fi for better stability
+    </Step>
+    
+    <Step title="Increase Timeout">
+      - Default timeout may be too short for slow networks
+      - Configure longer timeout for mobile data
+      - Retry transaction
+    </Step>
+    
+    <Step title="Check Server Status">
+      - Verify NIBSS server is operational
+      - Check for scheduled maintenance
+      - Contact support if server down
+    </Step>
+  </Steps>
+</Accordion>
+
+### Port Unreachable
+
+<Accordion title="Symptom">
+  "Could not connect with remote server, port is unreachable"
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Verify Firewall Rules">
+      Ensure outbound connections allowed:
+      ```
+      TCP 196.6.103.18:4016 (Outbound, SSL)
+      ```
+    </Step>
+    
+    <Step title="Check Network Restrictions">
+      - Corporate networks may block non-standard ports
+      - Contact network administrator
+      - Try alternate network (mobile data)
+    </Step>
+    
+    <Step title="Test Port Connectivity">
+      ```bash
+      telnet 196.6.103.18 4016
+      ```
+      
+      Should connect successfully.
+    </Step>
+  </Steps>
+</Accordion>
+
+### DNS Resolution Failed
+
+<Accordion title="Symptom">
+  "Host address could not be recognized"
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Check DNS Settings">
+      - Verify device DNS configuration
+      - Try Google DNS: 8.8.8.8 / 8.8.4.4
+      - Restart network connection
+    </Step>
+    
+    <Step title="Use IP Address">
+      - NIBSS uses IP address (196.6.103.18) not hostname
+      - No DNS lookup required for NIBSS
+      - Check MQTT broker hostname resolves
+    </Step>
+  </Steps>
+</Accordion>
+
+### SSL/TLS Errors
+
+<Accordion title="Symptom">
+  SSL handshake failed or certificate validation error
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Check Device Time">
+      - Incorrect device time causes certificate validation failures
+      - Set automatic date and time
+      - Sync with network time
+    </Step>
+    
+    <Step title="Update System Certificates">
+      - Update device to latest OS version
+      - Install system security updates
+      - Verify TLS 1.2+ support
+    </Step>
+    
+    <Step title="Verify SSL Enabled">
+      ```kotlin
+      ConnectionData(
+          ipAddress = "196.6.103.18",
+          ipPort = 4016,
+          isSSL = true  // Must be true
+      )
+      ```
+    </Step>
+  </Steps>
+</Accordion>
+
+## Transaction Issues
+
+### Terminal Validation Failed
+
+<Accordion title="Symptom">
+  Error: "Terminal validation failed" during transaction
+</Accordion>
+
+<Accordion title="Possible Causes">
+  - Terminal not properly configured
+  - Invalid terminal parameters
+  - Expired configuration
+  - Session keys expired
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Reconfigure Terminal">
+      - Force reconfiguration by clearing `LAST_POS_CONFIGURATION_TIME`
+      - Restart app to trigger auto-configuration
+      - Wait for configuration to complete successfully
+    </Step>
+    
+    <Step title="Verify Terminal Parameters">
+      Check `ConfigData` contains:
+      - Valid terminal capabilities
+      - Correct merchant ID
+      - Proper transaction limits
+      - Supported card types
+    </Step>
+  </Steps>
+</Accordion>
+
+### Payment Failed
+
+<Accordion title="Common Failure Reasons">
+  - Insufficient funds
+  - Invalid PIN
+  - Card declined by issuer
+  - Network timeout
+  - Terminal configuration issue
+</Accordion>
+
+<Accordion title="Diagnostic Steps">
+  <Steps>
+    <Step title="Check Response Code">
+      - `00`: Approved (success)
+      - `51`: Insufficient funds
+      - `55`: Incorrect PIN
+      - `91`: Issuer not available
+      - `96`: System error
+      
+      See NIBSS response codes documentation for complete list.
+    </Step>
+    
+    <Step title="Verify Card Status">
+      - Card not expired
+      - Card not blocked
+      - Card type supported (Verve, Visa, MasterCard)
+      - Chip functional (for chip cards)
+    </Step>
+    
+    <Step title="Check Transaction Log">
+      - Review transaction details in database
+      - Check for error messages
+      - Verify request reached NIBSS
+      - Confirm response received
+    </Step>
+  </Steps>
+</Accordion>
+
+### Transaction Timeout
+
+<Accordion title="Symptom">
+  Transaction takes too long and times out
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Check Network Quality">
+      - Ensure stable internet connection
+      - Avoid network switching during transaction
+      - Use Wi-Fi for better performance
+    </Step>
+    
+    <Step title="Reversal Handling">
+      - System automatically reverses timeout transactions
+      - Check if reversal completed successfully
+      - Verify funds returned to customer
+    </Step>
+    
+    <Step title="Retry Transaction">
+      - Wait for timeout period to complete
+      - Ensure previous transaction reversed
+      - Retry with same or different card
+    </Step>
+  </Steps>
+</Accordion>
+
+## MQTT Issues
+
+### MQTT Connection Failed
+
+<Accordion title="Symptom">
+  "Connection failed because: [error message]"
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Verify Broker Configuration">
+      - **Production**: `storm-mqtt.netpluspay.com`
+      - **Staging**: `storm-mqtt.test.netpluspay.com`
+      - Check correct environment is configured
+    </Step>
+    
+    <Step title="Check Network Access">
+      ```bash
+      ping storm-mqtt.netpluspay.com
+      ```
+      
+      Verify hostname resolves and is reachable.
+    </Step>
+    
+    <Step title="Verify Port Access">
+      - SSL port: 8883
+      - Non-SSL port: 1883 (if SSL disabled)
+      - Ensure firewall allows connection
+    </Step>
+    
+    <Step title="Check Authentication">
+      - Verify MQTT credentials are correct
+      - Check client ID is unique
+      - Ensure user has permission to connect
+    </Step>
+  </Steps>
+</Accordion>
+
+### Events Not Received
+
+<Accordion title="Symptom">
+  MQTT connected but not receiving notifications
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Verify Subscriptions">
+      Check subscribed to correct topics:
+      - `mqtt.pos.terminal_config.event`
+      - `mqtt.pos.transaction.event`
+      - `mqtt.pos.system.event`
+    </Step>
+    
+    <Step title="Check Topic Filters">
+      - Ensure topic names match exactly
+      - Verify wildcard subscriptions if used
+      - Check QoS level (0, 1, or 2)
+    </Step>
+    
+    <Step title="Monitor Connection State">
+      - Connection may disconnect silently
+      - Implement automatic reconnection
+      - Log connection state changes
+    </Step>
+  </Steps>
+</Accordion>
+
+## App-Specific Issues
+
+### Wrong Branding Displayed
+
+<Accordion title="Symptom">
+  App shows incorrect bank logo or name
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Check Build Flavor">
+      ```kotlin
+      Log.d("BuildFlavor", BuildConfig.FLAVOR)
+      // Should show: netpos, zenith, wema, etc.
+      ```
+    </Step>
+    
+    <Step title="Clean and Rebuild">
+      ```bash
+      ./gradlew clean
+      ./gradlew assembleZenithRelease  # or correct flavor
+      ```
+    </Step>
+    
+    <Step title="Verify Installation">
+      - Uninstall old version completely
+      - Install correct flavor APK
+      - Check package name matches expected flavor
+    </Step>
+  </Steps>
+</Accordion>
+
+### Reprint Password Not Working
+
+<Accordion title="Symptom">
+  Cannot set or use reprint password (Wema/Zenith only)
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Verify Flavor Support">
+      Feature only available for Wema and Zenith:
+      
+      ```kotlin
+      if (BuildConfig.FLAVOR != "wema" && BuildConfig.FLAVOR != "zenith") {
+          // Feature not available
+      }
+      ```
+    </Step>
+    
+    <Step title="Set Password">
+      - Go to Settings
+      - Tap "Reprint Password"
+      - Enter password twice
+      - Tap Save
+    </Step>
+    
+    <Step title="Reset Password">
+      Password stored in SharedPreferences as `PREF_REPRINT_PASSWORD`:
+      
+      ```kotlin
+      Prefs.remove(PREF_REPRINT_PASSWORD)
+      // Password cleared - can set new one
+      ```
+    </Step>
+  </Steps>
+</Accordion>
+
+### Features Not Available
+
+<Accordion title="Symptom">
+  Expected payment method or feature not visible
+</Accordion>
+
+<Accordion title="Solutions">
+  <Steps>
+    <Step title="Check Flavor-Specific Features">
+      Some features are flavor-specific:
+      - **Zenith**: Pay by Transfer, Custom QR
+      - **Wema**: Agent Banking, MPGS
+      - **Providus**: Merchant accounts
+      
+      Verify correct flavor is installed.
+    </Step>
+    
+    <Step title="Verify User Permissions">
+      - Check user role and permissions
+      - Some features require specific account types
+      - Contact support to enable features
+    </Step>
+    
+    <Step title="Check Configuration">
+      - Features may require additional configuration
+      - Verify merchant is registered for service
+      - Ensure terminal parameters include feature flags
+    </Step>
+  </Steps>
+</Accordion>
+
+## Diagnostic Tools
+
+### Enable Debug Logging
+
+<Steps>
+  <Step title="Timber Logging">
+    NetPOS uses Timber for logging:
+    
+    ```kotlin
+    Timber.d("Debug message")
+    Timber.e("Error message")
+    Timber.e(exception, "Exception occurred")
+    ```
+    
+    View logs in Logcat when device connected via ADB.
+  </Step>
+  
+  <Step title="Configuration Status">
+    Monitor configuration process:
+    
+    ```kotlin
+    NetPosTerminalConfig.liveData.observe(owner) { event ->
+        event.getContentIfNotHandled()?.let { status ->
+            Timber.d("Configuration status: $status")
+        }
+    }
+    ```
+  </Step>
+  
+  <Step title="Network Request Logging">
+    Enable OkHttp logging for API requests:
+    
+    ```kotlin
+    val loggingInterceptor = HttpLoggingInterceptor().apply {
+        level = HttpLoggingInterceptor.Level.BODY
+    }
+    ```
+  </Step>
+</Steps>
+
+### Check Stored Configuration
+
+<Steps>
+  <Step title="View SharedPreferences">
+    ```kotlin
+    // Check configuration data
+    val configData = Prefs.getString(PREF_CONFIG_DATA, null)
+    val keyHolder = Prefs.getString(PREF_KEYHOLDER, null)
+    val lastConfigTime = Prefs.getLong(LAST_POS_CONFIGURATION_TIME, 0)
+    
+    Timber.d("ConfigData: $configData")
+    Timber.d("KeyHolder: $keyHolder")
+    Timber.d("Last configured: ${Date(lastConfigTime)}")
+    ```
+  </Step>
+  
+  <Step title="Validate Configuration">
+    ```kotlin
+    val keyHolder = NetPosTerminalConfig.getKeyHolder()
+    val configData = NetPosTerminalConfig.getConfigData()
+    val terminalId = NetPosTerminalConfig.getTerminalId()
+    
+    if (keyHolder == null || configData == null || terminalId.isEmpty()) {
+        Timber.e("Configuration incomplete!")
+        // Trigger reconfiguration
+    }
+    ```
+  </Step>
+</Steps>
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card title="Check Logs" icon="file-lines">
+    - Review Logcat output
+    - Check Timber logs
+    - Look for exception stack traces
+    - Note error codes and messages
+  </Card>
+  
+  <Card title="Test Connectivity" icon="network-wired">
+    - Ping NIBSS server
+    - Test port connectivity  
+    - Verify DNS resolution
+    - Check firewall rules
+  </Card>
+  
+  <Card title="Verify Configuration" icon="gear">
+    - Check terminal ID
+    - Validate encryption keys
+    - Confirm environment settings
+    - Review build flavor
+  </Card>
+  
+  <Card title="Contact Support" icon="headset">
+    - Provide device model
+    - Include error messages
+    - Share configuration details
+    - Describe steps to reproduce
+  </Card>
+</CardGroup>
+
+## Common Solutions Summary
+
+<AccordionGroup>
+  <Accordion title="When Terminal Won't Configure">
+    1. Check internet connection
+    2. Verify NIBSS server reachable (196.6.103.18:4016)
+    3. Validate terminal ID
+    4. Clear configuration cache
+    5. Restart app
+  </Accordion>
+  
+  <Accordion title="When Transactions Fail">
+    1. Ensure terminal configured (status = 1)
+    2. Check network connectivity
+    3. Verify card is valid and active
+    4. Review transaction response code
+    5. Check for reversals if timeout occurred
+  </Accordion>
+  
+  <Accordion title="When Network Errors Occur">
+    1. Test internet connection
+    2. Switch networks (Wi-Fi ↔ Mobile)
+    3. Check firewall and port access
+    4. Verify SSL/TLS certificate validity
+    5. Retry with stable connection
+  </Accordion>
+  
+  <Accordion title="When Features Are Missing">
+    1. Confirm correct build flavor installed
+    2. Check user permissions and account type
+    3. Verify merchant registered for feature
+    4. Review terminal parameters
+    5. Contact support to enable feature
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [Configuration](/terminal/configuration) - Terminal setup guide
+- [Network Setup](/terminal/network-setup) - Network configuration details
+- [White-Label Setup](/terminal/white-label-setup) - Bank-specific setup

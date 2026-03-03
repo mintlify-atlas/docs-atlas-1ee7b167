@@ -1,97 +1,113 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Welcome to NetPOS
+description: A powerful Android POS application for accepting payments, managing transactions, and processing bills across multiple payment channels
 ---
 
-## Setting up
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.png"
+  alt="NetPOS Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.png"
+  alt="NetPOS Hero Dark"
+/>
 
-Get your documentation site up and running in minutes.
+## Transform your Android device into a complete payment terminal
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+NetPOS is a comprehensive SaaS point-of-sale application designed for Android devices that enables merchants to accept multiple payment types, manage transactions, and process utility bills - all from a single platform.
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
+<CardGroup cols={2}>
   <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
+    title="Quick start"
+    icon="rocket"
+    href="/quickstart"
   >
-    Edit your docs locally and preview them in real time.
+    Get up and running with NetPOS in minutes
   </Card>
   <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
+    title="Features"
+    icon="stars"
+    href="/features"
   >
-    Customize the design and colors of your site to match your brand.
+    Explore all capabilities and payment options
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
+</CardGroup>
+
+## Payment acceptance made simple
+
+NetPOS supports a comprehensive range of payment methods to meet your business needs:
+
+<CardGroup cols={3}>
+  <Card title="Card payments" icon="credit-card">
+    Accept EMV chip cards, magnetic stripe, and contactless payments with full PCI compliance
+  </Card>
+  <Card title="QR payments" icon="qrcode">
+    Generate and scan QR codes for contactless payment collection from customers
+  </Card>
+  <Card title="Bank transfers" icon="building-columns">
+    Receive instant payment notifications for bank transfers with virtual account integration
+  </Card>
+</CardGroup>
+
+## Beyond payments
+
+<CardGroup cols={2}>
+  <Card title="Bill payments" icon="file-invoice-dollar">
+    Process utility bills including electricity, cable TV, airtime/data, and internet subscriptions
+  </Card>
+  <Card title="Transaction management" icon="list-check">
+    View transaction history, generate reports, print receipts, and process refunds
+  </Card>
+  <Card title="End of day reports" icon="chart-line">
+    Generate comprehensive daily reports with approved and declined transaction summaries
+  </Card>
+  <Card title="Multi-currency support" icon="globe">
+    Accept payments in multiple currencies for international transactions
+  </Card>
+</CardGroup>
+
+## White-label ready
+
+NetPOS is built with white-labeling support, allowing financial institutions and payment service providers to customize the application with their own branding. The platform currently supports multiple banking partners including:
+
+- Zenith Bank
+- Wema Bank  
+- Providus Bank
+- Unity Bank
+- Heritage Bank
+- And more
+
+<Note>
+  Each white-label flavor can be configured with custom branding, payment flows, and feature sets to match your institution's requirements.
+</Note>
+
+## Built for reliability
+
+NetPOS is engineered for mission-critical payment processing:
+
+- **Offline transaction storage** - Transactions are stored locally and synced when connectivity returns
+- **Automatic retry logic** - Failed transaction uploads are automatically retried
+- **Receipt printing** - Generate customer and merchant copies with built-in printer support
+- **Security** - Encrypted PIN handling, secure key storage, and JWT authentication
+- **Firebase integration** - Real-time push notifications for payment events
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card
+    title="Set up your account"
+    icon="user-plus"
+    href="/quickstart#account-setup"
   >
-    Organize your docs to help users find what they need and succeed with your product.
+    Create your merchant account and configure your terminal
   </Card>
   <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
+    title="Process your first payment"
+    icon="circle-dollar"
+    href="/quickstart#your-first-transaction"
   >
-    Auto-generate API documentation from OpenAPI specifications.
+    Learn how to accept your first payment with NetPOS
   </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+</CardGroup>

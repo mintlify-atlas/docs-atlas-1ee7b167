@@ -1,0 +1,553 @@
+---
+title: Services & API Clients
+description: Complete reference for all network services, API clients, and repository implementations in NetPOS
+---
+
+## Overview
+
+NetPOS uses **Retrofit** for RESTful API communication with multiple backend services. The app integrates with Storm API, payment gateways (Zenith, Providus, FCMB), and NIBSS services.
+
+## Service Configuration
+
+All services are provided via Dagger Hilt dependency injection in `di/Module.kt:38`.
+
+### Base URLs
+
+<CodeGroup>
+```kotlin Default Service
+@Named("defaultBaseUrl")
+fun providesDefaultBaseUrl(): String = BuildConfig.STRING_DEFAULT_BASE_URL
+```
+
+```kotlin Zenith Pay-by-Transfer
+@Named("zenithPayByTransferBaseUrl")
+fun providesZenithPayByTransferBaseUrl(): String = 
+    BuildConfig.STRING_ZENITH_BASE_URL
+```
+
+```kotlin QR Payment Service
+@Named("contactQrPaymentBaseUrl")
+fun providesBaseUrlForContactlessPaymentWithQr(): String =
+    BuildConfig.STRING_CONTACTLESS_PAYMENT_WITH_QR_BASE_URL
+```
+</CodeGroup>
+
+## Core API Services
+
+### StormApiService
+
+Main backend API for authentication, transactions, and merchant operations.
+
+```kotlin network/StormApiService.kt:9
+interface StormApiService {
+    @POST("api/token")
+    fun appToken(@Body credentials: JsonObject?): Single<TokenResp>
+
+    @POST("api/auth")
+    fun userToken(@Body credentials: JsonObject?): Single<AppLoginResponse>
+
+    @GET("api/agents/{stormId}")
+    fun getAgentDetails(@Path("stormId") stormId: String?): Single<User>
+
+    @POST("api/passwordReset")
+    fun passwordReset(@Body payload: JsonObject?): Single<Response<Any?>?>
+    
+    @GET("/api/nip-notifications")
+    fun getNotificationByReference(
+        @Query("referenceNo") reference: String,
+        @Header("X-CLIENT-ID") clientId: String,
+        @Header("X-ACCESSCODE") accessCode: String
+    ): Single<NipNotification>
+    
+    @POST("/pos_transaction")
+    fun logTransactionBeforeConnectingToNibss(
+        @Body dataToLog: TransactionToLogBeforeConnectingToNibbs
+    ): Single<ResponseBodyAfterLoginToBackend>
+
+    @PUT("/pos_transaction/{rrn}")
+    fun updateLogAfterConnectingToNibss(
+        @Path("rrn") rrn: String,
+        @Body data: DataToLogAfterConnectingToNibss
+    ): Single<Response<LogToBackendResponse>>
+    
+    @GET("/pos_transactions/terminal/{terminalId}/btw/{from}/{to}/{page}/{pageSize}")
+    fun getTransactionsFromNewService(
+        @Path("terminalId") terminalId: String,
+        @Path("from") from: String,
+        @Path("to") to: String,
+        @Path("page") page: Int,
+        @Path("pageSize") pageSize: Int
+    ): Single<GetEndOfDayModelFromNewServer>
+}
+```
+
+<Accordion title="StormApiService Endpoints" defaultOpen>
+  <ParamField path="POST /api/token" type="Authentication">
+    Get application-level authentication token
+    
+    **Request:**
+    ```json
+    {
+      "appId": "netpos-app",
+      "appSecret": "***"
+    }
+    ```
+    
+    **Response:** `TokenResp { success: Boolean, token: String }`
+  </ParamField>
+  
+  <ParamField path="POST /api/auth" type="User Login">
+    Authenticate merchant user and retrieve JWT token
+    
+    **Request:**
+    ```json
+    {
+      "username": "merchant@example.com",
+      "password": "***",
+      "deviceId": "optional-device-id"
+    }
+    ```
+    
+    **Response:** `AppLoginResponse { success, token, data }`
+  </ParamField>
+  
+  <ParamField path="POST /pos_transaction" type="Transaction Logging">
+    Log transaction before NIBSS connection
+    
+    **Returns:** RRN for transaction tracking
+  </ParamField>
+  
+  <ParamField path="GET /pos_transactions/terminal/{terminalId}/btw/{from}/{to}" type="End of Day">
+    Retrieve transactions for EOD report
+    
+    **Query Params:**
+    - `terminalId`: Terminal identifier
+    - `from`: Start date (yyyy-MM-dd HH:mm:ss)
+    - `to`: End date
+    - `page`: Page number
+    - `pageSize`: Results per page
+  </ParamField>
+</Accordion>
+
+### ZenithPayByTransferService
+
+Zenith Bank pay-by-transfer integration for account details and transaction queries.
+
+```kotlin network/ZenithPayByTransferService.kt:11
+interface ZenithPayByTransferService {
+    @GET("api/getUserAccount/{terminalId}")
+    fun getUserAccount(
+        @Path("terminalId") terminalId: String
+    ): Single<GetPayByTransferUserAccount>
+
+    @GET("api/queryTransactions/{requestParameters}")
+    fun getTransactions(
+        @Path("requestParameters") requestParameters: String
+    ): Single<GetZenithPayByTransferUserTransactions>
+
+    @POST("api/addFirebaseToken")
+    fun registerDeviceToken(
+        @Body req: ZenithPayByTransferRegisterDeviceTokenModel
+    ): Single<String>
+}
+```
+
+<Info>
+  This service uses **Bearer token authentication** via `zenithPayByTransferHeaderInterceptor` in di/Module.kt:92
+</Info>
+
+### QrPaymentService
+
+Contactless QR code payment processing.
+
+```kotlin network/QrPaymentService.kt:11
+interface QrPaymentService {
+    @POST("contactlessQr")
+    fun payWithQr(
+        @Body payWithQrRequest: PayWithQrRequest
+    ): Single<Response<String>>
+}
+```
+
+### CheckoutService
+
+Payment checkout and session management.
+
+```kotlin
+interface CheckoutService {
+    @POST("checkout/initialize")
+    fun initializeCheckout(
+        @Body checkOutModel: CheckOutModel
+    ): Single<CheckOutResponse>
+    
+    @GET("checkout/verify/{reference}")
+    fun verifyCheckout(
+        @Path("reference") reference: String
+    ): Single<CheckOutResponse>
+}
+```
+
+### SubmitComplaintsService
+
+Customer feedback and complaints submission.
+
+```kotlin
+interface SubmitComplaintsService {
+    @POST("api/complaints")
+    fun submitComplaint(
+        @Body feedbackRequest: FeedbackRequest
+    ): Single<Response<String>>
+}
+```
+
+## Bank Integration Services
+
+### ProvidusMerchantsAccountService
+
+Providus Bank merchant account operations.
+
+```kotlin
+interface ProvidusMerchantsAccountService {
+    @GET("merchant/account/{accountNumber}")
+    fun getMerchantAccount(
+        @Path("accountNumber") accountNumber: String
+    ): Single<GetPayByTransferUserAccount>
+    
+    @GET("merchant/transactions")
+    fun getTransactions(
+        @Query("accountNumber") accountNumber: String,
+        @Query("from") from: String,
+        @Query("to") to: String
+    ): Single<List<Transaction>>
+}
+```
+
+### FcmbMerchantsAccountService
+
+FCMB Bank merchant account integration.
+
+```kotlin
+interface FcmbMerchantsAccountService {
+    @GET("merchant/account/{accountNumber}")
+    fun getMerchantAccount(
+        @Path("accountNumber") accountNumber: String
+    ): Single<GetPayByTransferUserAccount>
+}
+```
+
+## OkHttp Configuration
+
+### Default HTTP Client
+
+```kotlin di/Module.kt:104
+@Named("defaultOkHttpClient")
+fun providesDefaultOkHttpClient(
+    @Named("loginInterceptor") loggingInterceptor: Interceptor
+): OkHttpClient =
+    OkHttpClient().newBuilder()
+        .connectTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(120, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .addInterceptor(loggingInterceptor)
+        .build()
+```
+
+<Note>
+  **Timeout Configuration:**
+  - Connect: 120 seconds
+  - Read: 120 seconds
+  - Write: 120 seconds
+  - Auto-retry on connection failure: Enabled
+</Note>
+
+### Authenticated HTTP Client
+
+```kotlin di/Module.kt:117
+@Named("zenithPayByTransferOkHttp")
+fun providesZenithOkHttpClient(
+    @ApplicationContext context: Context,
+    @Named("loginInterceptor") loggingInterceptor: Interceptor,
+    @Named("zenithPayByTransferHeaderInterceptor") authInterceptor: Interceptor
+): OkHttpClient =
+    OkHttpClient().newBuilder()
+        .connectTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .addInterceptor(authInterceptor)
+        .addInterceptor(loggingInterceptor)
+        .build()
+```
+
+## Interceptors
+
+### Logging Interceptor
+
+```kotlin di/Module.kt:85
+@Named("loginInterceptor")
+fun providesLoginInterceptor(): Interceptor = 
+    HttpLoggingInterceptor().apply {
+        setLevel(HttpLoggingInterceptor.Level.BODY)
+    }
+```
+
+<Warning>
+  Set logging level to `BASIC` or `NONE` in production to prevent sensitive data exposure.
+</Warning>
+
+### Authorization Interceptor
+
+```kotlin di/Module.kt:92
+@Named("zenithPayByTransferHeaderInterceptor")
+fun providesZenithPayByTransferHeaderInterceptor(): Interceptor = 
+    Interceptor { chain ->
+        val originalRequest = chain.request()
+        val requestWithAuth = originalRequest.newBuilder()
+            .addHeader("Authorization", "Bearer ${Prefs.getString(PREF_USER_TOKEN, "")}")
+            .build()
+        chain.proceed(requestWithAuth)
+    }
+```
+
+## Retrofit Configuration
+
+### Default Retrofit Instance
+
+```kotlin di/Module.kt:174
+@Named("defaultRetrofit")
+fun providesDefaultRetrofit(
+    @Named("defaultOkHttpClient") okhttp: OkHttpClient,
+    @Named("defaultBaseUrl") baseUrl: String
+): Retrofit =
+    Retrofit.Builder()
+        .addConverterFactory(GsonConverterFactory.create())
+        .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+        .baseUrl(baseUrl)
+        .client(okhttp)
+        .build()
+```
+
+<Info>
+  **Converters:**
+  - **GsonConverterFactory**: JSON serialization/deserialization
+  - **RxJava2CallAdapterFactory**: Reactive API calls returning `Single<T>`, `Observable<T>`, etc.
+</Info>
+
+## Service Injection
+
+Services are injected via Dagger Hilt:
+
+```kotlin di/Module.kt:271
+@Provides @Singleton
+fun providesStormApiService(
+    @Named("defaultRetrofit") retrofit: Retrofit
+): StormApiService = retrofit.create(StormApiService::class.java)
+
+@Provides @Singleton
+fun providesZenithPayByTransferService(
+    @Named("zenithPayByTransferRetrofit") retrofit: Retrofit
+): ZenithPayByTransferService = retrofit.create(ZenithPayByTransferService::class.java)
+```
+
+## Repository Pattern
+
+### ZenithPayByTransferRepository
+
+Repository wrapping service calls with business logic:
+
+```kotlin
+class ZenithPayByTransferRepository(
+    private val service: ZenithPayByTransferService,
+    private val dao: ZenithPayByTransferUserTransactionsDao
+) {
+    fun getUserAccount(terminalId: String): Single<GetPayByTransferUserAccount> {
+        return service.getUserAccount(terminalId)
+            .subscribeOn(Schedulers.io())
+    }
+    
+    fun getTransactionsWithCache(
+        params: String
+    ): Single<GetZenithPayByTransferUserTransactions> {
+        return service.getTransactions(params)
+            .doOnSuccess { response ->
+                // Cache to local database
+                dao.insertTransactions(response.transactions)
+            }
+            .onErrorResumeNext { error ->
+                // Fallback to cached data
+                dao.getAllTransactions().map { 
+                    GetZenithPayByTransferUserTransactions(it) 
+                }
+            }
+    }
+}
+```
+
+## RxJava Call Patterns
+
+### Basic API Call
+
+```kotlin
+stormApiService.userToken(credentials)
+    .subscribeOn(Schedulers.io())
+    .observeOn(AndroidSchedulers.mainThread())
+    .subscribe { response, error ->
+        response?.let { handleSuccess(it) }
+        error?.let { handleError(it) }
+    }
+    .disposeWith(compositeDisposable)
+```
+
+### Chained Calls
+
+```kotlin
+stormApiService.userToken(credentials)
+    .flatMap { loginResponse ->
+        val token = loginResponse.token
+        Prefs.putString(PREF_USER_TOKEN, token)
+        stormApiService.getAgentDetails(getStormId(token))
+    }
+    .flatMap { user ->
+        // Save to database
+        userDao.insert(user)
+    }
+    .subscribeOn(Schedulers.io())
+    .observeOn(AndroidSchedulers.mainThread())
+    .subscribe { _, error ->
+        // Handle final result
+    }
+```
+
+### Retry Logic
+
+```kotlin
+stormApiService.getTransactions(terminalId)
+    .retry(3)
+    .retryWhen { errors ->
+        errors.zipWith(Observable.range(1, 3)) { error, retryCount ->
+            if (retryCount < 3) retryCount else throw error
+        }.flatMap { retryCount ->
+            Observable.timer(retryCount * 2L, TimeUnit.SECONDS)
+        }
+    }
+    .subscribe { response, error ->
+        // Handle response
+    }
+```
+
+## Error Handling
+
+### HTTP Exception Handling
+
+```kotlin
+apiService.getData()
+    .subscribe { response, error ->
+        error?.let {
+            when (val httpException = it as? HttpException) {
+                null -> Timber.e("Network error: ${it.message}")
+                else -> {
+                    when (httpException.code()) {
+                        401 -> handleUnauthorized()
+                        404 -> handleNotFound()
+                        500 -> handleServerError()
+                        else -> handleGenericError(httpException)
+                    }
+                }
+            }
+        }
+    }
+```
+
+### Parsing Error Body
+
+```kotlin
+val httpException = error as? HttpException
+val errorBody = httpException?.response()?.errorBody()?.string()
+val errorMessage = try {
+    Gson().fromJson(errorBody, ErrorResponse::class.java).message
+} catch (e: Exception) {
+    "An unexpected error occurred"
+}
+```
+
+## Testing Services
+
+### MockWebServer Example
+
+```kotlin
+class StormApiServiceTest {
+    private lateinit var mockWebServer: MockWebServer
+    private lateinit var apiService: StormApiService
+    
+    @Before
+    fun setup() {
+        mockWebServer = MockWebServer()
+        mockWebServer.start()
+        
+        val retrofit = Retrofit.Builder()
+            .baseUrl(mockWebServer.url("/"))
+            .addConverterFactory(GsonConverterFactory.create())
+            .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+            .build()
+        
+        apiService = retrofit.create(StormApiService::class.java)
+    }
+    
+    @Test
+    fun `login returns success response`() {
+        val mockResponse = MockResponse()
+            .setResponseCode(200)
+            .setBody("""{"success":true,"token":"abc123"}""")
+        mockWebServer.enqueue(mockResponse)
+        
+        val credentials = JsonObject().apply {
+            addProperty("username", "test@example.com")
+            addProperty("password", "password")
+        }
+        
+        val response = apiService.userToken(credentials).blockingGet()
+        
+        assertTrue(response.success)
+        assertEquals("abc123", response.token)
+    }
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always use Schedulers" icon="clock">
+    Subscribe on `Schedulers.io()`, observe on `AndroidSchedulers.mainThread()`
+  </Card>
+  
+  <Card title="Dispose subscriptions" icon="trash">
+    Use `CompositeDisposable` and dispose in `onCleared()` or `onDestroy()`
+  </Card>
+  
+  <Card title="Handle errors gracefully" icon="shield">
+    Provide user-friendly error messages, log technical details
+  </Card>
+  
+  <Card title="Use repositories" icon="layer-group">
+    Abstract network calls in repository layer for testability
+  </Card>
+</CardGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/reference/architecture">
+    Dependency injection setup
+  </Card>
+  
+  <Card title="Models" icon="database" href="/reference/models">
+    Request/response models
+  </Card>
+  
+  <Card title="ViewModels" icon="code" href="/reference/viewmodels">
+    Service consumption patterns
+  </Card>
+  
+  <Card title="Security" icon="shield" href="/reference/security">
+    Authentication and encryption
+  </Card>
+</CardGroup>

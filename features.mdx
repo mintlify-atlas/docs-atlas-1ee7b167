@@ -1,0 +1,318 @@
+---
+title: Features
+description: Comprehensive overview of NetPOS capabilities including payment processing, transaction management, and utility bill payments
+---
+
+## Payment processing
+
+NetPOS provides multiple payment channels to accommodate different customer preferences and transaction scenarios.
+
+### Card payments
+
+Accept payments from chip cards, magnetic stripe cards, and contactless cards.
+
+**Supported transaction types:**
+- **Purchase** - Standard card payment transactions
+- **Refund** - Process refunds for previous card transactions  
+- **Pre-authorization** - Reserve funds on a card without immediate capture
+- **Pre-auth completion** - Complete a previously authorized transaction
+- **Balance inquiry** - Check available balance on customer cards
+
+**Card features:**
+- EMV chip card processing with PIN verification
+- Magnetic stripe fallback support
+- Multiple account type selection (savings, current, credit, bonus, investment, universal)
+- Real-time transaction status updates
+- Secure PIN block encryption using TripleDES
+- Support for multiple card schemes
+
+<Note>
+  Card transactions are processed through NIBSS (Nigeria Inter-Bank Settlement System) infrastructure with configurable terminal parameters.
+</Note>
+
+### QR code payments
+
+Generate and scan QR codes for contactless payment collection.
+
+**Display QR code:**
+- Merchant generates a QR code containing payment details
+- Customer scans the code using their banking app
+- Payment is processed instantly
+- Real-time payment notifications via Firebase
+
+**Scan to pay:**
+- Scan customer-presented QR codes
+- Support for Masterpass QR and other QR payment schemes
+- Automatic transaction status polling
+- Built-in QR code registration for merchants
+
+**QR payment schemes supported:**
+- Masterpass QR
+- Zenith QR (for Zenith Bank white-label)
+- BlueCode payment system
+
+### Bank transfer payments
+
+Receive payments directly to your virtual account with instant notifications.
+
+**Pay by Transfer features:**
+- Unique virtual account number for each merchant
+- Real-time NIP (NIBSS Instant Payment) notifications
+- View transfer transaction history
+- Filter and search transfer payments
+- Automatic account name verification
+
+**Payment notification details include:**
+- Source account number and name
+- Beneficiary account information  
+- Transfer amount
+- Transaction timestamp
+- Unique reference number
+
+<Tip>
+  Customers can pay by transferring to your virtual account number from any Nigerian bank's mobile app or internet banking platform.
+</Tip>
+
+### Multi-currency support
+
+Process payments in multiple currencies for international transactions. Merchants can select the currency for each transaction, with automatic currency conversion and display.
+
+## Transaction management
+
+Comprehensive tools for viewing, managing, and analyzing your payment transactions.
+
+### Transaction history
+
+**View and filter transactions:**
+- Last transaction quick view
+- All transactions list with pagination
+- Date range filtering (from/to date selection)
+- Filter by transaction status (approved, declined, all)
+- Filter by transaction type
+- Search by reference number
+
+**Transaction details include:**
+- Transaction ID and order ID
+- Amount and currency
+- Card holder information
+- Masked PAN (Primary Account Number)
+- Transaction timestamp
+- Terminal ID and STAN (System Trace Audit Number)
+- Response code and message
+- RRN (Retrieval Reference Number)
+- Account type and card type
+
+### Receipt management
+
+**Print and share receipts:**
+- Print customer copy
+- Print merchant copy
+- Download receipt as PDF
+- Share receipt via messaging apps
+- Email receipt to customer
+- SMS receipt delivery
+
+**Receipt formats:**
+- Standard POS receipt with merchant branding
+- Includes transaction details, terminal info, and merchant contact
+- Reprint indicator for duplicate receipts
+- Support for custom receipt templates per white-label flavor
+
+### Reprint transactions
+
+Reprint receipts for historical transactions with password protection.
+
+- Password-protected access to reprint functionality
+- Search transactions by reference, date, or amount
+- Print customer or merchant copy
+- Clear reprint watermark on duplicate receipts
+
+### Refund processing
+
+Process refunds for card transactions directly from the terminal.
+
+- Select transaction from history
+- Initiate refund request
+- Card verification for refund
+- Automatic refund receipt generation
+- Refund tracking in transaction history
+
+## Bill payments
+
+Process utility bill payments for customers with real-time verification and confirmation.
+
+### Electricity/Power
+
+**Supported providers:**
+- Multiple electricity distribution companies
+- Prepaid and postpaid meter support
+
+**Payment flow:**
+1. Select provider
+2. Enter meter number
+3. Verify account details and customer name
+4. Enter amount
+5. Review and confirm
+6. Process payment
+7. Generate receipt with token (for prepaid)
+
+### Cable TV subscriptions
+
+**Supported providers:**
+- Multiple cable TV operators
+- Various subscription packages
+
+**Payment process:**
+1. Select cable TV provider
+2. Enter smart card number  
+3. Verify account name
+4. Select subscription package
+5. Review amount and convenience fee
+6. Process payment
+7. Instant subscription activation
+
+### Airtime and data
+
+**Top-up services:**
+- All major Nigerian network operators
+- Airtime recharge
+- Data bundle purchases
+
+**Features:**
+- Mobile number verification
+- Quick amount selection
+- Data package selection
+- Instant delivery
+- Transaction confirmation receipt
+
+### Internet subscriptions
+
+Process internet service provider subscription payments with account verification.
+
+## End of day reporting
+
+Generate comprehensive daily transaction reports for reconciliation.
+
+**Report features:**
+- Select date for report generation
+- Total transaction count
+- Total transaction amount  
+- Approved transactions breakdown
+- Declined transactions breakdown
+- Filter by approval status (all, approved, declined)
+
+**Report actions:**
+- View detailed transaction list
+- Print end of day report
+- Print filtered transactions (approved/declined only)
+- Export report data
+
+**Automatic reconciliation:**
+- Retrieves transactions from server
+- Falls back to local database if offline
+- Matches local and remote transactions
+- Identifies discrepancies
+
+<Note>
+  End of day reports include transactions from midnight to 11:59 PM for the selected date, showing all payment types including cards, QR, and bank transfers.
+</Note>
+
+## Settings and configuration
+
+Configure terminal parameters and application settings.
+
+### Terminal configuration
+
+**NIBSS terminal settings:**
+- NIBSS IP address
+- NIBSS port number  
+- Terminal ID
+- NIBSS encryption keys (Key 1, Key 2)
+- Automatic key refresh
+
+**Configuration options:**
+- Use terminal ID from logged-in account
+- Manual terminal ID override
+- Receipt format selection
+- Reprint password management
+
+### Receipt preferences
+
+Customize receipt output format and delivery options.
+
+- Default receipt format (standard/custom)
+- Automatic print settings
+- Customer copy preferences
+- Merchant copy preferences
+- Digital receipt delivery options (email/SMS)
+
+## Security features
+
+NetPOS implements multiple layers of security for payment processing:
+
+**Authentication:**
+- Username and password login
+- JWT token-based session management
+- Password reset via email
+- Session timeout protection
+
+**Transaction security:**
+- Encrypted PIN block transmission
+- TripleDES encryption for sensitive data
+- Secure key storage using Android KeyStore
+- PCI compliance for card data handling
+- No storage of sensitive authentication data (full PAN, CVV)
+
+**Data protection:**
+- Local database encryption
+- Secure network communication (TLS/SSL)
+- Firebase Cloud Messaging for secure notifications
+- Automatic security updates via backend configuration
+
+## Offline capabilities
+
+Continue operations even when network connectivity is limited.
+
+**Offline features:**
+- Local transaction storage in Room database
+- Transaction queue for failed uploads
+- Automatic retry on connectivity restoration
+- End of day reports from local database
+- Transaction history access offline
+
+**Background sync:**
+- WorkManager-based background processing
+- Automatic transaction upload retry
+- Network-aware sync scheduling
+- Battery-optimized sync operations
+
+## White-label customization
+
+NetPOS supports complete white-label customization for banking and payment partners.
+
+**Customizable elements:**
+- Application name and branding
+- Logo and color scheme  
+- Splash screen
+- Receipt footer with partner contact information
+- Feature enable/disable per flavor
+- Custom payment flows
+- Partner-specific integrations
+
+**Supported flavors:**
+- NetPOS (default)
+- Zenith Bank
+- Wema Bank
+- Providus Bank
+- Konga
+- Wema Cash Out
+- Wema MPGS
+- Heritage Bank
+- Aella Credit
+- TingoPay
+- Unity Bank
+- EasyPay
+
+<Tip>
+  Each flavor can have its own application ID, signing configuration, and feature set while sharing the core payment processing engine.
+</Tip>

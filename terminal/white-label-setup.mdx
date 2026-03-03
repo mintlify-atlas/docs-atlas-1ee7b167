@@ -1,0 +1,400 @@
+---
+title: White-Label Setup
+description: Configure NetPOS for different banks and financial institutions
+---
+
+## Overview
+
+NetPOS supports white-label deployments for multiple financial institutions. Each bank can have its own branded version with custom configurations, URLs, and features.
+
+## Supported White-Label Variants
+
+NetPOS uses Gradle product flavors to create bank-specific builds:
+
+<CardGroup cols={2}>
+  <Card title="NetPOS" icon="mobile">
+    **Package**: `com.woleapp.netpos`
+    
+    Default NetPos branded version
+  </Card>
+  
+  <Card title="Zenith Bank" icon="building-columns">
+    **Package**: `com.woleapp.netpos.zenith`
+    
+    Zenith Bank branded version with custom features
+  </Card>
+  
+  <Card title="Wema Bank" icon="building-columns">
+    **Package**: `com.woleapp.netpos.wema`
+    
+    Wema Bank variant with specialized services
+  </Card>
+  
+  <Card title="Providus Bank" icon="building-columns">
+    **Package**: `com.woleapp.netpos.providus`
+    
+    Providus Bank customized build
+  </Card>
+  
+  <Card title="Konga" icon="store">
+    **Package**: `com.woleapp.netpos.konga`
+    
+    Konga marketplace integration
+  </Card>
+  
+  <Card title="Heritage Bank" icon="building-columns">
+    **Package**: `com.woleapp.netpos.heritage`
+    
+    Heritage Bank branded version
+  </Card>
+  
+  <Card title="Unity Bank" icon="building-columns">
+    **Package**: `com.woleapp.netpos.unitybank`
+    
+    Unity Bank customized build
+  </Card>
+  
+  <Card title="EasyPay" icon="credit-card">
+    **Package**: `com.woleapp.netpos.easypay`
+    
+    EasyPay payment solution
+  </Card>
+  
+  <Card title="Aella Credit" icon="hand-holding-dollar">
+    **Package**: `com.woleapp.netpos.aellacredit`
+    
+    Aella Credit lending solution
+  </Card>
+  
+  <Card title="TingoPay" icon="mobile">
+    **Package**: `com.woleapp.netpos.tingopay`
+    
+    TingoPay digital payments
+  </Card>
+  
+  <Card title="Wema Cash Out" icon="money-bill-wave">
+    **Package**: `com.woleapp.netpos.wemaagent`
+    
+    Wema Bank agent banking
+  </Card>
+  
+  <Card title="Wema MPGS" icon="globe">
+    **Package**: `com.woleapp.netpos.wemampgs`
+    
+    Wema MasterCard Payment Gateway Services
+  </Card>
+</CardGroup>
+
+## Build Configuration
+
+White-label variants are defined in `app/build.gradle`:
+
+```gradle
+flavorDimensions "whiteLabels"
+
+productFlavors {
+    netpos {
+        dimension "whiteLabels"
+    }
+    zenith {
+        dimension "whiteLabels"
+        applicationIdSuffix ".zenith"
+    }
+    wema {
+        dimension "whiteLabels"
+        applicationIdSuffix ".wema"
+    }
+    // ... other flavors
+}
+```
+
+## Flavor-Specific Resources
+
+Each white-label variant has its own resource directory:
+
+```
+app/src/
+├── main/           # Shared resources
+├── netpos/         # NetPOS-specific
+├── zenith/         # Zenith-specific
+├── wema/           # Wema-specific
+├── providus/       # Providus-specific
+└── defaults/       # Shared white-label code
+```
+
+### Customizable Resources
+
+<Steps>
+  <Step title="Branding Assets">
+    Each flavor can override:
+    
+    - **App Name**: `values/strings.xml`
+    - **Colors**: `values/colors.xml`
+    - **Icons**: Launcher icons and app icons
+    - **Logo**: Brand-specific logos
+    - **Dimensions**: UI spacing and sizes
+  </Step>
+  
+  <Step title="Feature Flags">
+    Use `BuildConfig.FLAVOR` to enable/disable features:
+    
+    ```kotlin
+    if (BuildConfig.FLAVOR == "wema" || BuildConfig.FLAVOR == "zenith") {
+        // Enable reprint password feature
+        preferenceScreen[1].isVisible = true
+    }
+    ```
+  </Step>
+  
+  <Step title="API Endpoints">
+    Configure flavor-specific backend URLs in `local.properties`:
+    
+    ```properties
+    STRING_DEFAULT_BASE_URL=https://api.netpluspay.com
+    STRING_ZENITH_BASE_URL=https://zenith-api.netpluspay.com
+    STRING_CONTACTLESS_PAYMENT_WITH_QR_BASE_URL=https://qr.netpluspay.com
+    ```
+  </Step>
+</Steps>
+
+## Environment Configuration
+
+White-label builds can target different environments:
+
+### Production Environment
+
+**File**: `production-env.properties`
+
+```properties
+base.url.netpos.mqtt=storm-mqtt.netpluspay.com
+base.url.storm.utilities=https://storm-utilities.netpluspay.com/
+```
+
+### Staging Environment
+
+**File**: `staging-env.properties`
+
+```properties
+base.url.netpos.mqtt=storm-mqtt.test.netpluspay.com
+base.url.storm.utilities=http://storm-utilities.test.netpluspay.com/
+```
+
+### Switching Environments
+
+Edit `app-settings.properties`:
+
+```properties
+env.path.production=production-env.properties
+env.path.staging=staging-env.properties
+env.use.mode.production=true  # Set to false for staging
+env.use.test.keystore=false
+```
+
+## Bank-Specific Features
+
+### Zenith Bank
+
+<Accordion title="Zenith-Specific Features">
+  - **Pay by Transfer**: Zenith-specific transfer endpoints
+  - **QR Registration**: Custom QR merchant registration
+  - **Reprint Password**: Enhanced security for receipt reprinting
+  - **Custom API**: `STRING_ZENITH_BASE_URL` endpoint
+  
+  ```kotlin
+  // Zenith QR Service
+  if (BuildConfig.FLAVOR == "zenith") {
+      // Use ZenithQrService
+  }
+  ```
+</Accordion>
+
+### Wema Bank
+
+<Accordion title="Wema-Specific Features">
+  - **Agent Banking**: Cash-in/cash-out services
+  - **MPGS Integration**: MasterCard Payment Gateway
+  - **Merchant Accounts**: Custom account management
+  - **Reprint Password**: Enhanced receipt security
+  
+  Multiple Wema variants:
+  - `wema`: Standard Wema build
+  - `wemacashout`: Agent banking focus
+  - `wemampgs`: Payment gateway integration
+</Accordion>
+
+### Providus Bank
+
+<Accordion title="Providus-Specific Features">
+  - **Merchant Accounts**: Providus merchant account services
+  - **Custom Settlement**: Bank-specific settlement flow
+  - **Integration**: `ProvidusMerchantsAccountService`
+</Accordion>
+
+## Building White-Label Variants
+
+### Using Gradle
+
+Build a specific flavor:
+
+```bash
+# Build Zenith release
+./gradlew assembleZenithRelease
+
+# Build Wema debug
+./gradlew assembleWemaDebug
+
+# Build all NetPOS variants
+./gradlew assembleNetposRelease
+```
+
+### Build Types
+
+<AccordionGroup>
+  <Accordion title="Debug Build">
+    ```gradle
+    debug {
+        signingConfig signingConfigs.netpos_signing_config
+        buildConfigField "String", "BUILD_VARIANT", "\"debug\""
+        applicationIdSuffix ".debug"
+        ndk {
+            abiFilters "armeabi-v7a", "x86"
+        }
+    }
+    ```
+    
+    - Includes debug symbols
+    - Adds `.debug` package suffix
+    - Supports ARM and x86 emulators
+  </Accordion>
+  
+  <Accordion title="Release Build">
+    ```gradle
+    release {
+        signingConfig signingConfigs.netpos_signing_config
+        buildConfigField "String", "BUILD_VARIANT", "\"release\""
+        debuggable false
+        minifyEnabled false
+        shrinkResources false
+    }
+    ```
+    
+    - Production-ready build
+    - Code signing required
+    - Optimized for distribution
+  </Accordion>
+</AccordionGroup>
+
+## Signing Configuration
+
+All white-label variants use the same signing configuration defined in `keystore.properties`:
+
+```properties
+storePassword=!#stlg#m&c
+keyPassword=!#stlg#m&c
+keyAlias=netplus
+storeFile=../kozen-appstore.keystore
+```
+
+<Warning>
+  Keep `keystore.properties` and the keystore file secure. Never commit these to version control.
+</Warning>
+
+## Printer Settings
+
+Some features are flavor-specific, like printer configurations:
+
+```xml
+<ListPreference
+    android:defaultValue="print_customer_copy_only"
+    android:entries="@array/printer_settings_title"
+    android:entryValues="@array/printer_settings_value"
+    android:key="pref_printer_settings"
+    android:title="Printer Print Settings" />
+```
+
+Options include:
+- Print customer copy only
+- Print merchant copy only  
+- Print both copies
+
+## MQTT Configuration
+
+Each environment has its own MQTT broker:
+
+<CodeGroup>
+```properties Production
+base.url.netpos.mqtt=storm-mqtt.netpluspay.com
+```
+
+```properties Staging
+base.url.netpos.mqtt=storm-mqtt.test.netpluspay.com
+```
+</CodeGroup>
+
+MQTT is used for:
+- Real-time transaction notifications
+- Terminal configuration updates
+- Remote terminal management
+
+## Deployment Checklist
+
+<Steps>
+  <Step title="Configure Resources">
+    - Update brand colors in `colors.xml`
+    - Replace app icons and logos
+    - Set correct app name in `strings.xml`
+  </Step>
+  
+  <Step title="Set Environment">
+    - Choose production or staging in `app-settings.properties`
+    - Verify API endpoints in `local.properties`
+    - Configure MQTT broker URLs
+  </Step>
+  
+  <Step title="Build Configuration">
+    - Select correct product flavor
+    - Use release build type for production
+    - Verify signing configuration
+  </Step>
+  
+  <Step title="Testing">
+    - Test on physical device
+    - Verify terminal configuration
+    - Test bank-specific features
+    - Validate payment flows
+  </Step>
+  
+  <Step title="Distribution">
+    - Generate signed APK
+    - Test installation
+    - Deploy to bank's distribution channel
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Wrong Branding Appears">
+    - Clean the build: `./gradlew clean`
+    - Rebuild with correct flavor: `./gradlew assembleZenithRelease`
+    - Check `BuildConfig.FLAVOR` at runtime
+  </Accordion>
+  
+  <Accordion title="API Endpoint Issues">
+    - Verify `local.properties` contains correct URLs
+    - Check environment setting in `app-settings.properties`
+    - Ensure flavor-specific endpoints are configured
+  </Accordion>
+  
+  <Accordion title="Features Not Available">
+    - Check flavor-specific code in `BuildConfig.FLAVOR` conditions
+    - Verify feature flags are set correctly
+    - Ensure flavor directory has required resources
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [Configuration](/terminal/configuration) - Terminal setup and NIBSS configuration
+- [Network Setup](/terminal/network-setup) - Configure network connectivity
+- [Troubleshooting](/terminal/troubleshooting) - Resolve common issues

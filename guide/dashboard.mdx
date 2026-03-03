@@ -1,0 +1,339 @@
+---
+title: Dashboard
+description: Navigate the NetPOS Dashboard and access all POS services including transactions, transfers, bills, and reports
+---
+
+The Dashboard is the central hub of NetPOS where you can access all available services. After logging in, you'll land on this screen which displays service tiles in a grid layout.
+
+## Dashboard Overview
+
+The Dashboard (`DashboardFragment.kt`) presents services as interactive tiles arranged in a 2-column grid. Each tile represents a different POS function.
+
+<Frame>
+  <img src="/images/dashboard-overview.png" alt="NetPOS Dashboard" />
+</Frame>
+
+### Main Components
+
+- **Service Grid**: 2-column layout displaying available services with icons
+- **Amount Input**: Field to enter transaction amounts (for purchase flows)
+- **Transaction Remark**: Optional field for adding notes to transactions (visible in certain builds)
+- **Process Button**: Initiates the selected transaction
+
+## Available Services
+
+The services displayed vary based on your NetPOS build configuration. Here are the standard services:
+
+<CardGroup cols={2}>
+  <Card title="Purchase" icon="credit-card">
+    Process card payments for customer purchases
+  </Card>
+  
+  <Card title="Transactions" icon="list">
+    View transaction history, process refunds, and reprint receipts
+  </Card>
+  
+  <Card title="Balance Enquiry" icon="magnifying-glass-dollar">
+    Check customer card balance
+  </Card>
+  
+  <Card title="Bank Transfer" icon="building-columns">
+    Process NIP (NIBSS Instant Payment) bank transfers
+  </Card>
+  
+  <Card title="Pay Bills" icon="file-invoice-dollar">
+    Pay utility bills and other services
+  </Card>
+  
+  <Card title="View EOD" icon="calendar-check">
+    Generate and view End-of-Day reports
+  </Card>
+  
+  <Card title="Settings" icon="gear">
+    Configure terminal settings and preferences
+  </Card>
+  
+  <Card title="Pay by Transfer" icon="money-bill-transfer">
+    Zenith Pay by Transfer (ZPT) service
+  </Card>
+</CardGroup>
+
+## Service Grid Layout
+
+The dashboard uses a `GridLayoutManager` with 2 columns (`DashboardFragment.kt:564`):
+
+```kotlin
+binding.rvDashboard.layoutManager = GridLayoutManager(context, 2)
+binding.rvDashboard.adapter = adapter
+```
+
+Each service tile shows:
+- **Icon**: Visual representation of the service
+- **Label**: Service name (e.g., "Purchase", "Transactions")
+
+## Processing a Purchase
+
+The dashboard doubles as a quick purchase interface:
+
+<Steps>
+  <Step title="Enter amount">
+    In the amount field at the top of the screen, enter the transaction amount in Naira. Only numeric input is accepted.
+    
+    <Note>
+      The amount field uses `android:inputType="number"` to display the numeric keypad automatically.
+    </Note>
+  </Step>
+  
+  <Step title="Add remark (optional)">
+    If enabled for your build (e.g., Konga variant), you can add a transaction remark or note.
+    
+    This field is shown/hidden based on `BuildConfig.FLAVOR` at `DashboardFragment.kt:567-569`.
+  </Step>
+  
+  <Step title="Tap Process Transaction">
+    Click the **PROCESS TRANSACTION** button to validate the amount and proceed to card reading.
+    
+    The button calls `viewModel.validateField()` which checks:
+    - Amount is not empty
+    - Amount is greater than zero
+    - Amount is within acceptable limits
+  </Step>
+  
+  <Step title="Read card">
+    Insert, tap, or swipe the customer's card when prompted. The card reader dialog will appear automatically.
+  </Step>
+  
+  <Step title="Complete transaction">
+    Follow the on-screen prompts to complete the purchase. A receipt will be generated upon successful payment.
+  </Step>
+</Steps>
+
+## Navigating Services
+
+### Accessing Transactions
+
+Tap the **Transactions** tile to open the Transactions menu (`DashboardFragment.kt:245, 270, 382`):
+
+```kotlin
+0 -> addFragmentWithoutRemove(TransactionsFragment())
+```
+
+From there you can:
+- Process new purchases
+- View transaction history
+- Process refunds
+- Reprint receipts
+- Handle pre-authorizations
+
+### Accessing Bank Transfer
+
+Tap the **Bank Transfer** tile to process NIP transfers (`DashboardFragment.kt:247, 272, 384`):
+
+```kotlin
+2 -> addFragmentWithoutRemove(NipNotificationFragment.newInstance())
+```
+
+For Zenith builds, this opens the Zenith Pay by Transfer interface instead.
+
+### Accessing Bills Payment
+
+Tap the **Pay Bills** tile to pay utility bills and other services (`DashboardFragment.kt:248, 273, 393`):
+
+```kotlin
+3 -> addFragmentWithoutRemove(BillsFragment())
+```
+
+### Viewing End-of-Day Reports
+
+Tap the **View EOD** tile to generate reports (`DashboardFragment.kt:249, 275, 400`):
+
+```kotlin
+4 -> showCalendarDialog()
+```
+
+This opens a date picker allowing you to select which day's transactions to report on.
+
+## End-of-Day Calendar
+
+When you access End-of-Day reports, a calendar dialog appears:
+
+<Steps>
+  <Step title="Select date">
+    Choose the date for which you want to generate an EOD report. You can select:
+    - Today's date (current day's transactions)
+    - Any previous date (historical reports)
+  </Step>
+  
+  <Step title="Wait for data fetch">
+    NetPOS fetches transactions from the server for the selected date. A progress dialog shows "Please wait..." with a Cancel option.
+    
+    The system tries to fetch from the backend first, then falls back to local database if the server is unavailable.
+  </Step>
+  
+  <Step title="View report">
+    The EOD report displays in a bottom sheet showing:
+    - Total transactions count
+    - Approved transactions count
+    - Declined transactions count
+    - Total transaction amount
+    - Options to print or view details
+  </Step>
+</Steps>
+
+## Settings Access
+
+Tap the **Settings** tile to configure your terminal (`DashboardFragment.kt:309, 401`):
+
+```kotlin
+5 -> {
+    parentFragmentManager.beginTransaction()
+        .replace(R.id.container_main, SettingsFragment())
+        .addToBackStack(null)
+        .commit()
+}
+```
+
+Settings include:
+- Terminal configuration
+- Printer settings
+- Receipt preferences
+- NIBSS key management
+- Password changes
+
+## Progress Indicators
+
+The dashboard shows progress feedback during operations:
+
+- **Button Progress Bar**: Displays on the "Process Transaction" button during validation
+- **MGS Progress Bar**: Shows during payment gateway communication
+- **Loading Dialog**: Appears during card reading and transaction processing
+
+## Background Operations
+
+Several operations run automatically in the background:
+
+### ISW Token Refresh
+
+NetPOS automatically fetches an ISW (Interswitch) token when the dashboard loads (`DashboardFragment.kt:347-376`):
+
+```kotlin
+private fun getIswToken(context: Context)
+```
+
+This token is used for transaction processing and is stored in shared preferences.
+
+### Transaction Repush Worker
+
+Failed transactions are automatically retried in the background (`DashboardFragment.kt:575-585`):
+
+```kotlin
+private fun repushTransactionsToBackend() {
+    val workRequest = OneTimeWorkRequestBuilder<RepushFailedTransactionToBackendWorker>()
+        .setConstraints(
+            Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+        ).build()
+    workManager.enqueue(workRequest)
+}
+```
+
+This ensures transaction data integrity even with intermittent connectivity.
+
+## Build-Specific Variants
+
+NetPOS has different service configurations based on the build flavor:
+
+<Tabs>
+  <Tab title="Default Build">
+    Shows all services:
+    - Purchase
+    - Balance Enquiry
+    - Bank Transfer
+    - Pay Bills
+    - View EOD
+    - Settings
+  </Tab>
+  
+  <Tab title="Aella Credit Build">
+    Simplified interface:
+    - Purchase
+    - Pay by Transfer (or Bank Transfer)
+    - View EOD
+    - Settings
+    
+    Balance Enquiry is hidden in this variant.
+  </Tab>
+  
+  <Tab title="Konga Build">
+    Standard services with transaction remarks:
+    - Purchase (with remark field visible)
+    - Balance Enquiry
+    - Bank Transfer
+    - View EOD
+  </Tab>
+  
+  <Tab title="Zenith Build">
+    Features Pay by Transfer:
+    - Purchase
+    - Balance Enquiry
+    - Pay by Transfer (replaces Bank Transfer)
+    - Pay Bills
+    - View EOD
+    - Settings
+  </Tab>
+</Tabs>
+
+## Transaction Result Dialog
+
+After completing a transaction from the dashboard, a result dialog appears (`DashboardFragment.kt:143-147, 229-237`):
+
+- **Transaction Content**: Displays transaction details and result
+- **Print Options**: Customer copy, merchant copy, download, or share receipt
+- **SMS Receipt**: Send receipt via SMS to customer's phone
+
+## Printer Error Handling
+
+If receipt printing fails, a printer error dialog appears (`DashboardFragment.kt:195-208`):
+
+- **Title**: "Printer Error"
+- **Icon**: Warning icon
+- **Options**:
+  - **Send Receipt**: Opens SMS receipt dialog
+  - **Dismiss**: Closes the dialog and finishes the transaction
+
+## Tips for Efficient Dashboard Use
+
+<AccordionGroup>
+  <Accordion title="Quick Purchase Flow">
+    For fast transactions, use the amount field directly on the dashboard rather than navigating to the Transactions menu.
+  </Accordion>
+  
+  <Accordion title="Managing Failed Transactions">
+    NetPOS automatically retries failed transactions in the background. You don't need to manually resend them.
+  </Accordion>
+  
+  <Accordion title="EOD Report Best Practice">
+    Generate EOD reports at the end of each business day before closing. This ensures accurate reconciliation.
+  </Accordion>
+  
+  <Accordion title="Connectivity Issues">
+    If the dashboard is slow to load, check your internet connection. The ISW token fetch requires network access.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Process Transactions" icon="credit-card" href="/guide/transactions">
+    Learn about the full transaction workflow
+  </Card>
+  
+  <Card title="Refunds & Reprints" icon="rotate-left" href="/guide/refunds-reprints">
+    Handle refunds and reprint receipts
+  </Card>
+  
+  <Card title="Reports" icon="chart-line" href="/guide/reports">
+    Generate and print End-of-Day reports
+  </Card>
+</CardGroup>

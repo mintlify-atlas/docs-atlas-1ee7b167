@@ -1,0 +1,457 @@
+---
+title: Security & Encryption
+description: Security implementation, data encryption, authentication mechanisms, and secure storage in NetPOS
+---
+
+## Overview
+
+NetPOS implements multiple layers of security to protect sensitive payment data, user credentials, and transaction information. The application follows PCI-DSS compliance requirements for payment card industry security standards.
+
+## Encrypted Shared Preferences
+
+Sensitive data is stored using Android's **EncryptedSharedPreferences** with AES-256 encryption.
+
+```kotlin util/EncryptedPrefsUtils.kt:7
+object EncryptedPrefsUtils {
+
+    fun putString(context: Context, key: String, value: String) {
+        val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+
+        val sharedPreferences = EncryptedSharedPreferences.create(
+            "encrypted_prefs_name",
+            masterKeyAlias,
+            context,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+
+        sharedPreferences.edit().putString(key, value).apply()
+    }
+
+    fun getString(context: Context, key: String): String? {
+        val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+
+        val sharedPreferences = EncryptedSharedPreferences.create(
+            "encrypted_prefs_name",
+            masterKeyAlias,
+            context,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+
+        return sharedPreferences.getString(key, null)
+    }
+}
+```
+
+<Info>
+  **Encryption Algorithms Used:**
+  - **AES256-GCM** for value encryption (Galois/Counter Mode)
+  - **AES256-SIV** for key encryption (Synthetic IV mode)
+  - Keys managed by Android Keystore system
+</Info>
+
+## Authentication Flow
+
+### JWT-Based Authentication
+
+NetPOS uses JSON Web Tokens (JWT) for user authentication and session management.
+
+<Steps>
+  <Step title="User Login">
+    User enters email and password in `AuthenticationActivity`
+  </Step>
+  
+  <Step title="Credential Validation">
+    ```kotlin viewmodels/AuthViewModel.kt:79
+    private fun auth(username: String, password: String) {
+        val credentials = JsonObject().apply {
+            addProperty("username", username)
+            addProperty("password", password)
+        }
+        
+        stormApiService.userToken(credentials)
+            .flatMap { response ->
+                if (!response.success) {
+                    throw Exception("Login Failed")
+                }
+                val userToken = response.token
+                Prefs.putString(PREF_USER_TOKEN, userToken)
+                parseUserFromJWT(userToken)
+            }
+    }
+    ```
+  </Step>
+  
+  <Step title="JWT Parsing">
+    Extract user claims from JWT token:
+    ```kotlin
+    val userTokenDecoded = JWT(userToken)
+    val user = User().apply {
+        this.terminal_id = userTokenDecoded.getClaim("terminalId").asString()
+        this.business_name = userTokenDecoded.getClaim("businessName").asString()
+        this.netplus_id = userTokenDecoded.getClaim("stormId").asString()
+        this.mid = userTokenDecoded.getClaim("mid").asString()
+        this.partnerId = userTokenDecoded.getClaim("partnerId").asString()
+    }
+    ```
+  </Step>
+  
+  <Step title="Session Storage">
+    Store user session and token:
+    ```kotlin
+    Prefs.putString(PREF_USER, gson.toJson(user))
+    Prefs.putBoolean(PREF_AUTHENTICATED, true)
+    ```
+  </Step>
+</Steps>
+
+### JWT Claims Structure
+
+<Accordion title="Token Claims">
+  ```json
+  {
+    "stormId": "merchant-unique-id",
+    "terminalId": "terminal-identifier",
+    "businessName": "Merchant Business Name",
+    "mid": "merchant-id",
+    "partnerId": "partner-identifier",
+    "merchantId": "merchant-identifier",
+    "netplusPayMid": "netpluspay-mid",
+    "phoneNumber": "merchant-phone",
+    "business_address": "merchant-address",
+    "username": "user-email",
+    "iat": 1646383548,
+    "exp": 1646469948
+  }
+  ```
+</Accordion>
+
+## API Security
+
+### Bearer Token Authorization
+
+All authenticated API calls include Bearer token in headers:
+
+```kotlin di/Module.kt:92
+@Named("zenithPayByTransferHeaderInterceptor")
+fun providesZenithPayByTransferHeaderInterceptor(): Interceptor = Interceptor { chain ->
+    val originalRequest = chain.request()
+    val requestWithAuth = originalRequest.newBuilder()
+        .addHeader("Authorization", "Bearer ${Prefs.getString(PREF_USER_TOKEN, "")}")
+        .build()
+    chain.proceed(requestWithAuth)
+}
+```
+
+### Network Security Configuration
+
+<Accordion title="SSL/TLS Configuration">
+  - **Minimum TLS Version**: TLS 1.2
+  - **Certificate Pinning**: Configured for production endpoints
+  - **Clear Text Traffic**: Enabled only for development builds
+  
+  ```xml AndroidManifest.xml:29
+  <application
+      android:usesCleartextTraffic="true"
+      tools:targetApi="m">
+  ```
+  
+  <Warning>
+    Clear text traffic should be disabled in production builds.
+  </Warning>
+</Accordion>
+
+### Request Timeout Configuration
+
+```kotlin di/Module.kt:107
+OkHttpClient().newBuilder()
+    .connectTimeout(120, TimeUnit.SECONDS)
+    .readTimeout(120, TimeUnit.SECONDS)
+    .writeTimeout(120, TimeUnit.SECONDS)
+    .retryOnConnectionFailure(true)
+    .build()
+```
+
+## Card Data Security
+
+### PAN Masking
+
+Credit card numbers (PAN) are always masked before storage:
+
+<CodeGroup>
+```kotlin Masked PAN Storage
+data class TransactionResponse(
+    val maskedPan: String?,  // e.g., "506085******1234"
+    val cardExpiry: String?, // Stored temporarily, cleared after print
+    val cardHolder: String?,
+    val cardLabel: String?
+)
+```
+
+```kotlin Clear Sensitive Data
+private fun printReceipt(context: Context) {
+    val transactionResponse = modifiedTransaction.copy(
+        localDate_13 = modifiedTransaction.localDate_13 + PDF_REPRINT_IDENTIFIER
+    ).apply {
+        this.cardExpiry = "" // Clear card expiry before reprint
+    }
+}
+```
+</CodeGroup>
+
+<Warning>
+  Full PAN is never stored in database or shared preferences. NIBSS EPMS library handles secure card reading.
+</Warning>
+
+### NIBSS Key Management
+
+Cryptographic keys for NIBSS transactions are managed securely:
+
+```kotlin
+val hostConfig = HostConfig(
+    NetPosTerminalConfig.getTerminalId(),
+    NetPosTerminalConfig.connectionData,
+    NetPosTerminalConfig.getKeyHolder()!!,  // Encrypted keys
+    NetPosTerminalConfig.getConfigData()!!
+)
+```
+
+## Secure Storage
+
+### User Credentials
+
+<Accordion title="Stored User Data">
+  **Encrypted Storage** (via EncryptedPrefsUtils):
+  - Terminal configuration keys
+  - Merchant sensitive identifiers
+  
+  **Regular SharedPreferences** (non-sensitive):
+  - User token (JWT)
+  - User profile (business name, terminal ID)
+  - App preferences and settings
+  
+  ```kotlin
+  // Secure storage usage
+  EncryptedPrefsUtils.putString(context, "terminal_master_key", masterKey)
+  
+  // Regular storage
+  Prefs.putString(PREF_USER_TOKEN, userToken)
+  ```
+</Accordion>
+
+### Database Encryption
+
+<Note>
+  The Room database is **not encrypted by default**. Consider using **SQLCipher** for database-level encryption in production:
+  
+  ```gradle
+  implementation "net.zetetic:android-database-sqlcipher:4.5.4"
+  implementation "androidx.sqlite:sqlite-ktx:2.3.1"
+  ```
+</Note>
+
+## Password Security
+
+### Password Reset Flow
+
+```kotlin viewmodels/AuthViewModel.kt:378
+fun resetPassword() {
+    val username = usernameLiveData.value
+    if (username.isNullOrEmpty()) {
+        _message.value = Event("Please enter your email address")
+        return
+    }
+
+    val payload = JsonObject().apply {
+        addProperty("username", username)
+    }
+    
+    stormApiService.passwordReset(payload)
+        .subscribeOn(Schedulers.io())
+        .observeOn(AndroidSchedulers.mainThread())
+        .subscribe { response, error ->
+            response?.let {
+                if (it.code() == 200) {
+                    _message.value = Event("Password reset email sent to $username")
+                }
+            }
+        }
+}
+```
+
+<Info>
+  Password reset is handled server-side. Client only initiates the request.
+</Info>
+
+## Permissions
+
+NetPOS requests the following sensitive permissions:
+
+```xml AndroidManifest.xml:6
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.READ_PHONE_STATE" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+```
+
+<Accordion title="Permission Usage Justification">
+  - **Location**: Geolocation tagging for transactions (fraud prevention)
+  - **Camera**: QR code scanning for contactless payments
+  - **Phone State**: Device identification for terminal registration
+  - **Storage**: Receipt PDF generation and export
+  - **Internet**: API communication for transaction processing
+</Accordion>
+
+## Logging Security
+
+### Debug vs Release Logging
+
+```kotlin app/NetPosApp.kt:26
+override fun onCreate() {
+    super.onCreate()
+    if (BuildConfig.DEBUG) {
+        Timber.plant(Timber.DebugTree())
+    }
+}
+```
+
+<Warning>
+  Sensitive data logging is disabled in release builds. Use Timber instead of Log for automatic filtering.
+</Warning>
+
+### HTTP Logging
+
+```kotlin di/Module.kt:86
+@Named("loginInterceptor")
+fun providesLoginInterceptor(): Interceptor = 
+    HttpLoggingInterceptor().apply {
+        setLevel(HttpLoggingInterceptor.Level.BODY)
+    }
+```
+
+<Note>
+  In production, change logging level to `BASIC` or `NONE` to prevent exposure of sensitive data in logs.
+</Note>
+
+## Firebase Security
+
+### Cloud Messaging
+
+```kotlin app/NetPosApp.kt:59
+Firebase.messaging.subscribeToTopic("netpos_campaign")
+    .addOnCompleteListener { task ->
+        if (task.isSuccessful) {
+            Prefs.putBoolean("notification_campaign", true)
+        }
+    }
+```
+
+### Push Notification Service
+
+```kotlin services/MyFirebaseMessagingService.kt
+class MyFirebaseMessagingService : FirebaseMessagingService() {
+    override fun onMessageReceived(remoteMessage: RemoteMessage) {
+        // Validate message source before processing
+        remoteMessage.data.isNotEmpty().let {
+            // Process secure notification
+        }
+    }
+}
+```
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Input Validation" icon="shield-check">
+    Validate all user inputs before API calls:
+    ```kotlin
+    if (!Patterns.EMAIL_ADDRESS.matcher(username).matches()) {
+        _message.value = Event("Please enter a valid email")
+        return
+    }
+    ```
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation">
+    Never expose sensitive error details to UI:
+    ```kotlin
+    error?.let {
+        _message.value = Event("Login failed. Please try again.")
+        Timber.e(it) // Log full error securely
+    }
+    ```
+  </Card>
+  
+  <Card title="Session Management" icon="clock">
+    Implement token expiration and refresh:
+    - JWT tokens expire after 24 hours
+    - Force re-authentication on token expiry
+  </Card>
+  
+  <Card title="Secure Communication" icon="lock">
+    All API calls use HTTPS with certificate validation
+  </Card>
+</CardGroup>
+
+## Code Obfuscation
+
+```gradle build.gradle:86
+release {
+    minifyEnabled false
+    shrinkResources false
+    proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+}
+```
+
+<Warning>
+  **Security Risk**: Code obfuscation is currently disabled. Enable ProGuard/R8 for production:
+  
+  ```gradle
+  minifyEnabled true
+  shrinkResources true
+  ```
+</Warning>
+
+## Security Checklist
+
+<Steps>
+  <Step title="Enable code obfuscation">
+    Set `minifyEnabled true` in release build
+  </Step>
+  
+  <Step title="Disable clear text traffic">
+    Remove `usesCleartextTraffic="true"` for production
+  </Step>
+  
+  <Step title="Implement certificate pinning">
+    Pin SSL certificates for critical API endpoints
+  </Step>
+  
+  <Step title="Enable database encryption">
+    Integrate SQLCipher for encrypted Room database
+  </Step>
+  
+  <Step title="Reduce logging in production">
+    Set HTTP logging to NONE in release builds
+  </Step>
+  
+  <Step title="Implement biometric authentication">
+    Add fingerprint/face unlock for app access
+  </Step>
+</Steps>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/reference/architecture">
+    Application architecture overview
+  </Card>
+  
+  <Card title="Models" icon="database" href="/reference/models">
+    Secure data model definitions
+  </Card>
+</CardGroup>

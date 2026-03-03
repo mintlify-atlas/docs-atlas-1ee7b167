@@ -1,0 +1,320 @@
+---
+title: NetPOS SDK Setup
+description: Configure and integrate the NetPOS Android SDK into your application
+---
+
+The NetPOS SDK provides native Android components for payment processing, device management, and transaction handling.
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Android SDK" icon="android">
+    Min SDK 23, Target SDK 33
+  </Card>
+  <Card title="Kotlin" icon="code">
+    Kotlin 1.7+ with JVM target 17
+  </Card>
+</CardGroup>
+
+## Installation
+
+### Add Repository
+
+Add the NetPOS repository to your project-level `build.gradle`:
+
+```groovy build.gradle (Project)
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+```
+
+### Add Dependency
+
+Add the NetPOS SDK dependency to your app-level `build.gradle`:
+
+```groovy build.gradle (App)
+dependencies {
+    // NetPOS SDK
+    implementation 'com.github.netplusTeam.NetposContactSdk:netpossdk:1.0.30'
+    
+    // Required dependencies
+    implementation 'net.sf.j8583:j8583:1.12.0'
+    implementation 'com.jakewharton.timber:timber:4.7.1'
+    
+    // Lifecycle components
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1"
+    implementation "androidx.lifecycle:lifecycle-livedata-ktx:2.6.1"
+}
+```
+
+### Gradle Configuration
+
+Configure your build settings:
+
+```groovy build.gradle (App)
+android {
+    compileSdkVersion 33
+    
+    defaultConfig {
+        minSdkVersion 23
+        targetSdkVersion 33
+        
+        // Build config fields
+        buildConfigField "String", "STRING_DEFAULT_BASE_URL", 
+            "\"https://netpos.netpluspay.com/\""
+    }
+    
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    
+    buildFeatures {
+        viewBinding true
+        buildConfig true
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+}
+```
+
+## SDK Initialization
+
+### Application Class Setup
+
+Initialize the SDK in your Application class:
+
+```kotlin NetPosApp.kt
+import android.app.Application
+import com.netpluspay.netpossdk.NetPosSdk
+import com.netpluspay.netpossdk.utils.TerminalParameters
+import com.pixplicity.easyprefs.library.Prefs
+import dagger.hilt.android.HiltAndroidApp
+import timber.log.Timber
+
+@HiltAndroidApp
+class NetPosApp : Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+        
+        // Initialize Timber for logging
+        Timber.plant(Timber.DebugTree())
+        
+        // Initialize shared preferences
+        Prefs.Builder()
+            .setContext(this)
+            .setMode(ContextWrapper.MODE_PRIVATE)
+            .setPrefsName(packageName)
+            .setUseDefaultSharedPreference(true)
+            .build()
+        
+        // Initialize NetPOS SDK
+        NetPosSdk.init()
+        
+        // Load EMV parameters (first time only)
+        if (!Prefs.contains("load_provided")) {
+            NetPosSdk.loadProvidedCapksAndAids()
+            NetPosSdk.loadEmvParams(
+                TerminalParameters().apply {
+                    // Terminal capability: E068C8
+                    // E0 = Supports plaintext PIN and encrypted PIN
+                    // 68 = SDA and CDA supported
+                    // C8 = Supports cash, goods, services
+                    terminalCapability = "E068C8"
+                }
+            )
+            Prefs.putBoolean("load_provided", true)
+        }
+    }
+}
+```
+
+<Note>
+Make sure to register your Application class in `AndroidManifest.xml`:
+
+```xml
+<application
+    android:name=".app.NetPosApp"
+    android:allowBackup="true"
+    ...
+```
+</Note>
+
+## SDK Configuration
+
+### Terminal Parameters
+
+Configure EMV terminal parameters:
+
+<ParamField path="terminalCapability" type="string" required>
+  Terminal capability byte string (e.g., "E068C8" for standard POS)
+  
+  - Byte 1: Cardholder verification (E0 = PIN supported)
+  - Byte 2: Security capabilities (68 = SDA/CDA)
+  - Byte 3: Transaction capabilities (C8 = Cash/Goods/Services)
+</ParamField>
+
+```kotlin
+val terminalParams = TerminalParameters().apply {
+    terminalCapability = "E068C8"
+    terminalType = "22"
+    transactionCurrencyCode = "0566" // Nigerian Naira
+    countryCode = "0566" // Nigeria
+}
+
+NetPosSdk.loadEmvParams(terminalParams)
+```
+
+### CAPK and AID Loading
+
+Load Certification Authority Public Keys and Application Identifiers:
+
+```kotlin
+// Load provided CAPK and AID configurations
+NetPosSdk.loadProvidedCapksAndAids()
+```
+
+This loads the default EMV configurations required for card processing.
+
+## Core SDK Features
+
+### Device Serial Number
+
+Retrieve the device serial number:
+
+```kotlin
+val deviceSerial = NetPosSdk.getDeviceSerial()
+Timber.d("Device Serial: $deviceSerial")
+```
+
+### Terminal Configuration
+
+Access terminal configuration:
+
+```kotlin
+import com.woleapp.netpos.nibss.NetPosTerminalConfig
+
+// Get terminal ID
+val terminalId = NetPosTerminalConfig.getTerminalId()
+
+// Get terminal configuration
+val config = NetPosTerminalConfig.getTerminalConfig()
+```
+
+## Dependency Injection (Hilt)
+
+NetPOS uses Dagger Hilt for dependency injection:
+
+```groovy build.gradle (App)
+plugins {
+    id 'dagger.hilt.android.plugin'
+    id 'kotlin-kapt'
+}
+
+dependencies {
+    implementation "com.google.dagger:hilt-android:2.48.1"
+    kapt "com.google.dagger:hilt-compiler:2.48.1"
+}
+```
+
+```groovy build.gradle (Project)
+buildscript {
+    dependencies {
+        classpath "com.google.dagger:hilt-android-gradle-plugin:2.48.1"
+    }
+}
+```
+
+## ProGuard Rules
+
+Add ProGuard rules to prevent SDK obfuscation:
+
+```proguard proguard-rules.pro
+# NetPOS SDK
+-keep class com.netpluspay.netpossdk.** { *; }
+-keep interface com.netpluspay.netpossdk.** { *; }
+
+# ISO8583
+-keep class net.sf.j8583.** { *; }
+
+# Gson
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class com.google.gson.** { *; }
+```
+
+## Permissions
+
+Add required permissions to `AndroidManifest.xml`:
+
+```xml AndroidManifest.xml
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+<uses-permission android:name="android.permission.BLUETOOTH" />
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+```
+
+## Verification
+
+Verify your SDK setup:
+
+<Steps>
+  <Step title="Build Project">
+    Ensure the project builds without errors
+    ```bash
+    ./gradlew assembleDebug
+    ```
+  </Step>
+  
+  <Step title="Check Initialization">
+    Run the app and verify SDK initialization in logs:
+    ```
+    adb logcat | grep NetPosSdk
+    ```
+  </Step>
+  
+  <Step title="Test Device Serial">
+    Verify device serial number is retrieved successfully
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="MQTT Integration" icon="broadcast-tower" href="/integration/mqtt-integration">
+    Set up real-time event notifications
+  </Card>
+  
+  <Card title="API Endpoints" icon="code" href="/integration/api-endpoints">
+    Explore REST API integration
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="SDK initialization fails">
+    Ensure you're calling `NetPosSdk.init()` before any SDK operations and that your Application class is registered in the manifest.
+  </Accordion>
+  
+  <Accordion title="Build errors with Java version">
+    Set JVM target to 17 in both `compileOptions` and `kotlinOptions`.
+  </Accordion>
+  
+  <Accordion title="Runtime crashes on older devices">
+    Enable core library desugaring for API desugaring support on devices below API 26.
+  </Accordion>
+</AccordionGroup>

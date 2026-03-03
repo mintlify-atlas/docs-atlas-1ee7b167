@@ -1,0 +1,580 @@
+---
+title: Data Models Reference
+description: Complete reference for all data models, DTOs, and request/response objects in NetPOS
+---
+
+## Overview
+
+NetPOS data models are organized in the `com.woleapp.netpos.model` package. These classes represent domain objects, API request/response structures, and database entities.
+
+## Core Models
+
+### User Model
+
+Represents merchant user account with business information.
+
+```kotlin model/User.kt:5
+data class User(
+    @SerializedName(value = "agent_id", alternate = ["Merchant_id", "merchant_id"])
+    var user_id: Long? = null,
+    
+    @SerializedName("name")
+    var name: String? = null,
+    
+    @SerializedName("username")
+    var email: String? = null,
+    
+    @SerializedName("mobile_no")
+    var phone: String? = null,
+    
+    @SerializedName("bankAccountNumber")
+    var account_number: String? = null,
+    
+    @SerializedName("bankName")
+    var bank: String? = null,
+    
+    @SerializedName("bvnNumber")
+    var bvn: String? = null,
+    
+    @SerializedName("terminalId")
+    var terminal_id: String? = null,
+    
+    @SerializedName(value = "amount", alternate = ["wallet_amount", "availableBalance"])
+    var availableBalance: String? = "0.00",
+    
+    @SerializedName("ledgerBalance")
+    var ledgerBalance: String = "0.00",
+    
+    @SerializedName("isQRRegistered")
+    var qRRegistered: Boolean = false,
+    
+    @SerializedName("stormId")
+    var netplus_id: String? = null,
+    
+    @SerializedName("businessName")
+    var business_name: String? = null,
+    
+    @SerializedName("business_address")
+    var business_address: String? = null,
+    
+    @SerializedName("phoneNumber")
+    var business_phone_number: String? = null,
+    
+    var mid: String? = null,
+    var partnerId: String? = null,
+    var merchantId: String? = null,
+    var netplusPayMid: String? = null
+)
+```
+
+<ParamField path="terminal_id" type="String">
+  Unique terminal identifier assigned to merchant's POS device
+</ParamField>
+
+<ParamField path="netplus_id" type="String">
+  Storm ID - unique identifier in NetPlus ecosystem (formerly stormId)
+</ParamField>
+
+<ParamField path="mid" type="String">
+  Merchant ID for transaction processing
+</ParamField>
+
+<ParamField path="partnerId" type="String">
+  Partner identifier for white-label configurations
+</ParamField>
+
+<ParamField path="availableBalance" type="String">
+  Merchant's available wallet balance (string to preserve decimal precision)
+</ParamField>
+
+<ParamField path="qRRegistered" type="Boolean">
+  Whether merchant is registered for QR code payments
+</ParamField>
+
+## Authentication Models
+
+### AppLoginResponse
+
+```kotlin model/AppLoginResponse.kt:3
+data class AppLoginResponse(
+    val data: DataXX,
+    val success: Boolean,
+    val token: String
+)
+```
+
+<Accordion title="Login Response Structure">
+  - `success`: Boolean indicating authentication status
+  - `token`: JWT token for authenticated API requests
+  - `data`: Additional user data payload
+</Accordion>
+
+### TokenResp
+
+```kotlin model/User.kt:52
+data class TokenResp(
+    val success: Boolean, 
+    val token: String
+)
+```
+
+Simplified token response for app-level authentication.
+
+## Transaction Models
+
+### TransactionResponse
+
+Core transaction entity from NIBSS EPMS library:
+
+<Expandable title="TransactionResponse Fields" defaultOpen>
+  ```kotlin
+  @Entity(tableName = "transactionresponse")
+  data class TransactionResponse(
+      @PrimaryKey(autoGenerate = true) 
+      val id: Long,
+      
+      val terminalId: String,
+      val amount: Long,
+      val transactionType: TransactionType,
+      val responseCode: String,
+      val responseMessage: String,
+      
+      // Card information (masked)
+      val maskedPan: String?,
+      val cardExpiry: String?,
+      val cardHolder: String?,
+      val cardLabel: String?,
+      
+      // Transaction identifiers
+      val stan: String?,
+      val rrn: String?,
+      val authCode: String?,
+      
+      // Timestamps
+      val transactionTimeInMillis: Long,
+      val localDate_13: String,
+      
+      // Additional fields
+      val accountType: IsoAccountType
+  )
+  ```
+  
+  **Key Fields:**
+  - `responseCode`: ISO 8583 response code ("00" = approved)
+  - `stan`: System Trace Audit Number (unique per terminal)
+  - `rrn`: Retrieval Reference Number (unique transaction reference)
+  - `authCode`: Authorization code from issuer
+</Expandable>
+
+### TransactionType Enum
+
+```kotlin
+enum class TransactionType {
+    PURCHASE,
+    REFUND,
+    REVERSAL,
+    PRE_AUTHORIZATION,
+    PRE_AUTHORIZATION_COMPLETION,
+    BALANCE_INQUIRY,
+    CASH_ADVANCE
+}
+```
+
+### IsoAccountType Enum
+
+```kotlin
+enum class IsoAccountType {
+    DEFAULT_UNSPECIFIED,
+    SAVINGS,
+    CURRENT,
+    CREDIT,
+    UNIVERSAL,
+    INVESTMENT
+}
+```
+
+## Payment Models
+
+### Pay-by-Transfer Models
+
+<CodeGroup>
+```kotlin GetPayByTransferUserAccount
+data class GetPayByTransferUserAccount(
+    val accountName: String?,
+    val accountNumber: String?,
+    val bankName: String?,
+    val terminalId: String?
+)
+```
+
+```kotlin GetZenithPayByTransferUserTransactions
+data class GetZenithPayByTransferUserTransactions(
+    val transactions: List<GetZenithPayByTransferUserTransactionsModel>
+)
+
+@Entity
+data class GetZenithPayByTransferUserTransactionsModel(
+    @PrimaryKey val transactionId: String,
+    val amount: Double,
+    val senderName: String?,
+    val senderAccount: String?,
+    val transactionDate: String?
+)
+```
+</CodeGroup>
+
+### QR Payment Models
+
+```kotlin model/PayWithQrRequest.kt
+data class PayWithQrRequest(
+    val qrCode: String,
+    val amount: Double,
+    val merchantId: String,
+    val terminalId: String
+)
+```
+
+### Checkout Models
+
+<CodeGroup>
+```kotlin CheckOutModel
+data class CheckOutModel(
+    val amount: String,
+    val merchantId: String,
+    val terminalId: String,
+    val currency: String = "NGN",
+    val customerEmail: String?,
+    val customerPhone: String?
+)
+```
+
+```kotlin CheckOutResponse
+data class CheckOutResponse(
+    val success: Boolean,
+    val checkoutUrl: String?,
+    val reference: String?,
+    val message: String?
+)
+```
+</CodeGroup>
+
+## MQTT Event Models
+
+### MqttEvent
+
+Generic event wrapper for MQTT telemetry:
+
+```kotlin model/MqttEvent.kt:53
+data class MqttEvent<T>(
+    var storm_id: String? = null,
+    var business_name: String? = null,
+    var terminalId: String? = null,
+    @SerializedName("serial_number") var deviceSerial: String? = null,
+    @Ignore var data: T? = null,
+    var event: String? = null,
+    var status: String? = null,
+    var code: String? = null,
+    var timestamp: Long? = null,
+    var geo: String? = null,
+    var transactionType: String? = null
+) {
+    init {
+        val user = Singletons.getCurrentlyLoggedInUser()
+        storm_id = user?.netplus_id
+        business_name = user?.business_name
+        terminalId = NetPosTerminalConfig.getTerminalId()
+        deviceSerial = NetPosSdk.getDeviceSerial()
+    }
+}
+```
+
+### MqttEvents Enum
+
+```kotlin model/MqttEvent.kt:11
+enum class MqttEvents(val event: String?) {
+    AUTHENTICATION("AUTHENTICATION"),
+    TERMINAL_CONFIGURATION("TERMINAL_CONFIGURATION"),
+    TRANSACTIONS("TRANSACTION"),
+    PRINTING_RECEIPT("PRINTING_RECEIPT"),
+    NIP_PULL("BANK_TRANSFER"),
+    NIP_NEW("GENERATE_SESSION_CODE"),
+    NIP_SEARCH("VERIFY_SESSION_CODE"),
+    CARD_READER_EVENTS("CARD_READER_EVENTS"),
+    POWER_EVENTS("POWER_EVENTS"),
+    BATTERY_EVENTS("BATTERY_EVENTS"),
+    SMS_EVENTS("SMS_EVENTS")
+}
+```
+
+### Event Data Models
+
+<Accordion title="Specialized Event Models">
+  ```kotlin
+  data class AuthenticationEventData(
+      val business_name: String,
+      val storm_id: String,
+      @SerializedName("serial_number") val deviceSerial: String
+  )
+  
+  data class PrinterEventData(
+      val transactionRef: String, 
+      val printerCode: String
+  )
+  
+  data class BatteryEvents(
+      val battery_percentage: Int, 
+      val status: String
+  )
+  
+  data class CardReaderMqttEvent(
+      val cardExpiry: String? = null,
+      val cardHolder: String? = null,
+      val maskedPan: String? = null,
+      val readerError: String? = null
+  )
+  
+  data class SMSEvent(
+      val to: String, 
+      val status: String, 
+      var serverResponse: String
+  )
+  ```
+</Accordion>
+
+## Notification Models
+
+### NipNotification
+
+NIBSS Instant Payment (NIP) notification:
+
+```kotlin
+data class NipNotification(
+    val referenceNo: String,
+    val sessionCode: String?,
+    val amount: Double,
+    val senderName: String?,
+    val senderAccount: String?,
+    val narration: String?,
+    val timestamp: String?
+)
+```
+
+### PayWithCardNotificationModelResponse
+
+Card payment notification from gateway:
+
+```kotlin
+data class PayWithCardNotificationModelResponse(
+    val transactionRef: String,
+    val amount: String,
+    val responseCode: String,
+    val responseMessage: String,
+    val timestamp: String
+)
+```
+
+## End-of-Day Models
+
+```kotlin model/GetEndOfDayModelFromNewServer.kt
+data class GetEndOfDayModelFromNewServer(
+    val transactions: List<GetEodFromNewServiceModel>,
+    val totalPages: Int,
+    val currentPage: Int,
+    val totalRecords: Int
+)
+
+data class GetEodFromNewServiceModel(
+    val terminalId: String,
+    val from: String,
+    val to: String,
+    val page: Int,
+    val pageSize: Int
+)
+```
+
+## QR Code Models
+
+### Zenith QR Models
+
+<CodeGroup>
+```kotlin ZenithQr
+data class ZenithQr(
+    val qrCode: String,
+    val message: String?
+)
+```
+
+```kotlin CreateZenithMerchantPayload
+data class CreateZenithMerchantPayload(
+    var bvn: String? = null,
+    var merchantCategoryCode: String? = null,
+    var merchantCategoryDescription: String? = null,
+    var cityName: String? = null,
+    var regionName: String? = null
+)
+```
+
+```kotlin ZenithCity
+data class ZenithCity(
+    val cityName: String,
+    val regionName: String
+)
+```
+</CodeGroup>
+
+### NIBSS QR Models
+
+```kotlin model/NibssQRResponse.kt
+data class NibssQRResponse(
+    val returnCode: String?,
+    val codeUrl: String?,
+    val orderNo: String?
+)
+```
+
+## Merchant Models
+
+### MerchantDetailsResponse
+
+```kotlin model/MerchantDetailsResponse.kt
+data class MerchantDetailsResponse(
+    val merchantId: String,
+    val merchantName: String,
+    val merchantAddress: String?,
+    val merchantPhone: String?,
+    val merchantEmail: String?,
+    val accountNumber: String?,
+    val bankName: String?
+)
+```
+
+### MerchantCategory
+
+```kotlin
+data class MerchantCategory(
+    val merchantCategoryCode: String,
+    val merchantCategoryDescription: String
+)
+```
+
+## Logging Models
+
+### Transaction Logging
+
+<CodeGroup>
+```kotlin TransactionToLogBeforeConnectingToNibbs
+data class TransactionToLogBeforeConnectingToNibbs(
+    val terminalId: String,
+    val amount: Long,
+    val transactionType: String,
+    val timestamp: Long
+)
+```
+
+```kotlin DataToLogAfterConnectingToNibss
+data class DataToLogAfterConnectingToNibss(
+    val responseCode: String,
+    val responseMessage: String,
+    val rrn: String?,
+    val stan: String?,
+    val authCode: String?
+)
+```
+
+```kotlin LogToBackendResponse
+data class LogToBackendResponse(
+    val success: Boolean,
+    val message: String?
+)
+```
+</CodeGroup>
+
+## Feedback Models
+
+```kotlin model/FeedbackRequest.kt
+data class FeedbackRequest(
+    val terminalId: String,
+    val subject: String,
+    val message: String,
+    val category: String,
+    val userId: String
+)
+```
+
+## Constants
+
+```kotlin model/AppConstants.kt:3
+object AppConstants {
+    const val BASE_URL_FOR_LOGGING_TO_BACKEND = "https://device.netpluspay.com/"
+    const val APP_DB_NAME = "netpos-db"
+    const val ISW_TOKEN = "TokenForIsw"
+    const val FIREBASE_TOPIC_UPDATE = "UpdateYourApp"
+    const val PAYMENT_WITH_QR_STRING = "Payment_with_qr_string"
+}
+```
+
+## Model Validation
+
+<Accordion title="Common Validation Patterns">
+  ```kotlin
+  // Email validation
+  if (!Patterns.EMAIL_ADDRESS.matcher(username).matches()) {
+      throw ValidationException("Invalid email")
+  }
+  
+  // BVN validation
+  if (payload.bvn.isNullOrEmpty() || payload.bvn!!.length < 11) {
+      throw ValidationException("Invalid BVN")
+  }
+  
+  // Amount validation
+  if (amount <= 0.0) {
+      throw ValidationException("Amount must be greater than zero")
+  }
+  ```
+</Accordion>
+
+## Serialization Notes
+
+<Info>
+  All models use **Gson** for JSON serialization with these annotations:
+  - `@SerializedName`: Map JSON field names
+  - `@Ignore`: Exclude fields from serialization
+  - `@Expose`: Explicitly include fields (when using `excludeFieldsWithoutExposeAnnotation()`)
+</Info>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use data classes" icon="code">
+    Kotlin data classes provide automatic equals(), hashCode(), and toString()
+  </Card>
+  
+  <Card title="Nullable safety" icon="shield">
+    Use nullable types (`String?`) for optional API fields
+  </Card>
+  
+  <Card title="Default values" icon="check">
+    Provide sensible defaults for optional fields (e.g., `availableBalance = "0.00"`)
+  </Card>
+  
+  <Card title="Immutability" icon="lock">
+    Prefer `val` over `var` for immutable fields
+  </Card>
+</CardGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Database Schema" icon="database" href="/reference/database-schema">
+    See how models are persisted
+  </Card>
+  
+  <Card title="Services" icon="network-wired" href="/reference/services">
+    API services using these models
+  </Card>
+  
+  <Card title="ViewModels" icon="diagram-project" href="/reference/viewmodels">
+    Business logic with models
+  </Card>
+</CardGroup>

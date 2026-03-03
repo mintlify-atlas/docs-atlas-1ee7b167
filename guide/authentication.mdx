@@ -1,0 +1,159 @@
+---
+title: Authentication
+description: Learn how to log in to NetPOS, manage your credentials, and reset your password
+---
+
+NetPOS requires authentication to ensure secure access to your POS terminal. This guide covers login procedures and password management.
+
+## Logging In
+
+When you first open NetPOS, you'll be presented with the login screen.
+
+<Steps>
+  <Step title="Enter your username">
+    In the **Username** field, enter your registered email address or username. The field accepts lowercase letters, numbers, and these special characters: `.` `_` `@`
+    
+    The username field is located at `LoginFragment.kt:48-64` and includes an email icon for easy identification.
+  </Step>
+  
+  <Step title="Enter your password">
+    In the **Password** field, enter your account password. Click the eye icon on the right to toggle password visibility.
+    
+    <Note>
+      The password field uses secure input masking to protect your credentials from shoulder surfing.
+    </Note>
+  </Step>
+  
+  <Step title="Tap Login">
+    Press the **LOGIN** button to authenticate. The system will verify your credentials with the Storm API backend.
+    
+    A progress indicator will appear on the button while authentication is in progress.
+  </Step>
+  
+  <Step title="Access granted">
+    Upon successful authentication, you'll be automatically redirected to the main Dashboard. The terminal configuration will be initialized in the background.
+  </Step>
+</Steps>
+
+## Authentication Flow
+
+The authentication process involves several backend steps:
+
+1. **Credential Validation** - Your username and password are validated against the Storm API
+2. **Terminal Initialization** - NetPOS Terminal Config is initialized with your device settings
+3. **MQTT Event Logging** - An authentication event is logged with your business name, Storm ID, and device serial
+4. **Session Creation** - A secure session is established for your terminal
+
+<Warning>
+  Authentication requires an active internet connection. Ensure your device is connected to WiFi or mobile data before attempting to log in.
+</Warning>
+
+## Password Reset
+
+If you've forgotten your password, NetPOS provides a self-service password reset feature.
+
+<Steps>
+  <Step title="Access password reset">
+    On the login screen, tap the **Forgot Password?** link located below the password field.
+    
+    This will open the password reset dialog (`LoginFragment.kt:82-84`).
+  </Step>
+  
+  <Step title="Enter your registered email">
+    In the password reset dialog, enter the email address registered with your Storm account.
+    
+    <Accordion title="Password Reset Dialog Fields">
+      - **Header**: "Reset Password" in primary color
+      - **Email Field**: Accepts your registered email with Storm
+      - **Close Button**: X icon in the top-right corner
+      - **Reset Button**: Submits the password reset request
+    </Accordion>
+  </Step>
+  
+  <Step title="Submit reset request">
+    Tap the **RESET PASSWORD** button. A progress indicator will show while the request is being processed.
+    
+    The system calls `viewModel.resetPassword()` which sends a password reset email to your registered address.
+  </Step>
+  
+  <Step title="Check your email">
+    You'll receive a password reset link via email. Follow the instructions in the email to create a new password.
+    
+    The dialog will automatically close once the reset request is successfully submitted.
+  </Step>
+</Steps>
+
+## Toast Notifications
+
+During the authentication process, you may see various toast messages:
+
+- **Success**: "Authentication successful" or automatic redirect to Dashboard
+- **Invalid Credentials**: "Invalid username or password"
+- **Network Error**: "Please check your internet connection"
+- **Server Error**: Error message from the backend API
+
+These messages are displayed via `viewModel.message.observe()` at `LoginFragment.kt:77-80`.
+
+## Device Registration
+
+NetPOS uses device-specific authentication for enhanced security:
+
+- Each device is assigned a unique **Device ID** generated from hardware identifiers
+- The Device ID is sent with every login request (for certain builds like "easypay")
+- This ensures that your terminal credentials are tied to your specific Android device
+
+<Note>
+  Your device ID is automatically generated and managed by NetPOS. You don't need to configure it manually.
+</Note>
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Strong Passwords" icon="lock">
+    Use a combination of letters, numbers, and special characters for your password.
+  </Card>
+  
+  <Card title="Keep Credentials Private" icon="eye-slash">
+    Never share your login credentials with others, even colleagues.
+  </Card>
+  
+  <Card title="Secure Device" icon="shield-halved">
+    Keep your Android device locked with a PIN, pattern, or biometric authentication.
+  </Card>
+  
+  <Card title="Regular Updates" icon="arrows-rotate">
+    Change your password periodically to maintain security.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Login button not responding
+
+Ensure you've entered both username and password. The login button may be disabled if fields are empty.
+
+### Authentication taking too long
+
+Check your internet connection. The authentication process requires communication with Storm API servers.
+
+### Password reset email not received
+
+- Check your spam/junk folder
+- Verify you entered the correct registered email address
+- Contact your administrator if the issue persists
+
+### Automatic logout
+
+Your session may expire after a period of inactivity. Simply log in again to resume.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Dashboard Overview" icon="grid-2" href="/guide/dashboard">
+    Learn about the Dashboard and available services
+  </Card>
+  
+  <Card title="Process Transactions" icon="credit-card" href="/guide/transactions">
+    Start processing customer transactions
+  </Card>
+</CardGroup>

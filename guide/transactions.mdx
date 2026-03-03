@@ -1,0 +1,444 @@
+---
+title: Transaction Processing
+description: Complete guide to processing card payments, viewing transaction history, and managing transaction details in NetPOS
+---
+
+NetPOS supports various transaction types including purchases, cash advances, deposits, and pre-authorizations. This guide covers the complete transaction workflow from initiation to receipt.
+
+## Transaction Menu
+
+Access the Transactions menu from the Dashboard by tapping the **Transactions** tile. The menu displays available transaction types in a grid layout.
+
+### Available Transaction Types
+
+<CardGroup cols={2}>
+  <Card title="Purchase" icon="cart-shopping">
+    Process standard card payments for goods and services
+  </Card>
+  
+  <Card title="Cash" icon="money-bill">
+    Process cash deposit transactions
+  </Card>
+  
+  <Card title="Pre-Authorization" icon="clock">
+    Reserve funds on a customer's card for later completion
+  </Card>
+  
+  <Card title="Cash Advance" icon="hand-holding-dollar">
+    Withdraw cash using a debit card
+  </Card>
+  
+  <Card title="Reprint" icon="print">
+    Reprint receipts for previous transactions
+  </Card>
+  
+  <Card title="Settings" icon="gear">
+    Quick access to terminal settings (in some builds)
+  </Card>
+</CardGroup>
+
+<Note>
+  The available transaction types vary based on your NetPOS build configuration. Some builds like "Konga" and "Aella Credit" show different options.
+</Note>
+
+## Processing a Purchase
+
+The purchase flow is the most common transaction type in NetPOS.
+
+<Steps>
+  <Step title="Navigate to Purchase">
+    From the Dashboard:
+    1. Tap **Transactions** tile
+    2. Select **Purchase** from the transaction menu
+    
+    Or use the quick purchase interface directly on the Dashboard.
+  </Step>
+  
+  <Step title="Enter transaction amount">
+    In the amount field, enter the purchase amount in Naira (without kobo). For example:
+    - Enter `1000` for ₦1,000.00
+    - Enter `25000` for ₦25,000.00
+    
+    The amount is automatically converted to kobo (multiplied by 100) internally for processing.
+  </Step>
+  
+  <Step title="Add remark (optional)">
+    Some builds display a transaction remark field where you can add notes about the transaction.
+    
+    <Accordion title="When is the remark field visible?">
+      The remark field appears for:
+      - Konga build (`BuildConfig.FLAVOR.contains("konga")` at `DashboardFragment.kt:567-569`)
+      - When enabled in terminal settings
+      
+      The remark is stored with the transaction for reference.
+    </Accordion>
+  </Step>
+  
+  <Step title="Validate and proceed">
+    Tap the **PROCESS TRANSACTION** button. The system validates:
+    - Amount is not empty
+    - Amount is greater than zero
+    - Amount doesn't exceed terminal limits
+    
+    If validation fails, you'll see an error message. If successful, the card reader dialog opens.
+  </Step>
+  
+  <Step title="Read customer card">
+    The card reader dialog appears with instructions:
+    
+    <Tabs>
+      <Tab title="Insert Card (Chip)">
+        - Insert the chip card into the reader slot
+        - Keep the card inserted until prompted to remove
+        - Follow PIN entry prompts on the device
+      </Tab>
+      
+      <Tab title="Tap Card (Contactless)">
+        - Hold the contactless card near the reader
+        - Wait for the beep or vibration confirmation
+        - For amounts above the contactless limit, PIN may be required
+      </Tab>
+      
+      <Tab title="Swipe Card (Magstripe)">
+        - Swipe the card through the magnetic stripe reader
+        - Ensure a smooth, complete swipe
+        - PIN entry will be required
+      </Tab>
+    </Tabs>
+    
+    The system reads card data including:
+    - PAN (Primary Account Number)
+    - Card scheme (Visa, Mastercard, Verve, etc.)
+    - Expiry date
+    - Card holder name (if available)
+  </Step>
+  
+  <Step title="Select account type">
+    Choose the account type for the transaction:
+    - **Default**: Let the card/issuer decide
+    - **Savings**: Debit from savings account
+    - **Current**: Debit from current account
+    - **Credit**: Use credit card balance
+    
+    The available options depend on the card type.
+  </Step>
+  
+  <Step title="Enter PIN">
+    The customer enters their card PIN on the device. The PIN is:
+    - Encrypted using Triple DES
+    - Securely transmitted as a PIN block
+    - Never stored or logged in plain text
+    
+    <Warning>
+      Never assist customers with PIN entry. Let them enter their PIN privately.
+    </Warning>
+  </Step>
+  
+  <Step title="Wait for authorization">
+    NetPOS processes the transaction:
+    1. Sends transaction request to payment gateway
+    2. Routes through NIBSS (Nigeria Inter-Bank Settlement System)
+    3. Contacts card issuer for authorization
+    4. Receives approval or decline response
+    
+    A progress dialog shows "Processing transaction..." during this time.
+  </Step>
+  
+  <Step title="View transaction result">
+    The transaction result appears in a dialog showing:
+    - **Response Code**: "00" for approved, other codes for declined
+    - **Response Message**: "Approved" or decline reason
+    - **Transaction Amount**: Confirmed amount debited
+    - **Card Details**: Masked PAN (e.g., 506099******1234)
+    - **Reference Numbers**: RRN, STAN, transaction ID
+    - **Date and Time**: Transaction timestamp
+  </Step>
+  
+  <Step title="Print or send receipt">
+    Choose how to provide the receipt:
+    
+    <Tabs>
+      <Tab title="Print">
+        Select receipt type:
+        - **Customer Copy**: For the customer
+        - **Merchant Copy**: For your records
+        
+        The thermal printer produces a paper receipt with all transaction details.
+      </Tab>
+      
+      <Tab title="Download">
+        Download the receipt as a PDF file to your device's Downloads folder.
+        
+        Requires storage permission on first use.
+      </Tab>
+      
+      <Tab title="Share">
+        Share the receipt PDF via:
+        - WhatsApp
+        - Email
+        - SMS
+        - Other sharing apps
+      </Tab>
+      
+      <Tab title="Download and Share">
+        Combines download and share actions:
+        1. Saves PDF to Downloads
+        2. Opens sharing menu
+      </Tab>
+      
+      <Tab title="SMS">
+        Send receipt details via SMS:
+        1. Enter customer's 11-digit phone number
+        2. Tap **Send**
+        3. SMS is sent with transaction summary
+        
+        The phone number must be exactly 11 digits (Nigerian format).
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Transaction Response Codes
+
+Understand what different response codes mean:
+
+<ResponseField name="00" type="Approved">
+  Transaction successful. Card was charged and receipt can be issued.
+</ResponseField>
+
+<ResponseField name="51" type="Insufficient Funds">
+  Card has insufficient balance. Customer should try another card or payment method.
+</ResponseField>
+
+<ResponseField name="55" type="Incorrect PIN">
+  Wrong PIN entered. Customer can retry (typically 3 attempts allowed).
+</ResponseField>
+
+<ResponseField name="91" type="Issuer Unavailable">
+  Card issuer's system is down. Retry later or use another card.
+</ResponseField>
+
+<ResponseField name="06" type="Error">
+  General processing error. Contact support if persistent.
+</ResponseField>
+
+<Note>
+  Only transactions with response code "00" should be treated as successful. All other codes indicate the transaction was not completed.
+</Note>
+
+## Transaction History
+
+View all past transactions processed on your terminal.
+
+### Accessing Transaction History
+
+From the Transactions menu, tap **Reprint** or access history from transaction details screens.
+
+The Transaction History screen (`TransactionHistoryFragment.kt`) displays:
+- List of all transactions in reverse chronological order (newest first)
+- Pagination for large transaction volumes
+- Search functionality to find specific transactions
+
+### Transaction List View
+
+Each transaction in the list shows:
+- **Masked PAN**: e.g., 506099******1234
+- **Amount**: Transaction value in Naira
+- **Date/Time**: When the transaction occurred
+- **Status**: Approved (green) or Declined (red)
+- **Transaction Type**: Purchase, Refund, etc.
+
+### Viewing Transaction Details
+
+Tap any transaction to view full details:
+
+<Accordion title="Transaction Detail Fields">
+  - **Response Code & Message**: e.g., "00 - Approved"
+  - **Amount**: Full transaction amount
+  - **Masked PAN**: Card number (partially masked)
+  - **Card Scheme**: Visa, Mastercard, Verve, etc.
+  - **Transaction Type**: Purchase, Refund, Cash Advance, etc.
+  - **RRN (Retrieval Reference Number)**: Unique transaction identifier
+  - **STAN (System Trace Audit Number)**: Sequential transaction number
+  - **Authorization Code**: Issuer authorization code (for approved transactions)
+  - **Terminal ID**: Your terminal identifier
+  - **Merchant ID**: Your merchant account ID
+  - **Date & Time**: Transaction timestamp
+  - **Local Date**: Transaction date in local format
+</Accordion>
+
+### Transaction Detail Actions
+
+From the transaction detail screen (`TransactionDetailsFragment.kt`), you can:
+
+<CardGroup cols={2}>
+  <Card title="Reprint Receipt" icon="print">
+    Generate a new receipt for the transaction (customer or merchant copy)
+  </Card>
+  
+  <Card title="Refund" icon="rotate-left">
+    Process a refund for the transaction (if eligible)
+  </Card>
+  
+  <Card title="Download Receipt" icon="download">
+    Save receipt as PDF to device storage
+  </Card>
+  
+  <Card title="Share Receipt" icon="share-nodes">
+    Share receipt via SMS, email, or messaging apps
+  </Card>
+</CardGroup>
+
+## Transaction Tabs
+
+The Transaction History screen has two tabs:
+
+<Tabs>
+  <Tab title="History Tab">
+    Shows paginated list of all transactions from the database.
+    
+    - Automatically loads more transactions as you scroll
+    - Sorted by date (newest first)
+    - Displays both approved and declined transactions
+  </Tab>
+  
+  <Tab title="Search Tab">
+    Allows searching for specific transactions.
+    
+    Search criteria includes:
+    - Transaction amount
+    - Card number (last 4 digits)
+    - Date range
+    - Response code
+    - RRN or STAN
+  </Tab>
+</Tabs>
+
+Switch between tabs by tapping the **History** or **Search** buttons at the top of the screen. The active tab is highlighted in the primary color.
+
+## Special Transaction Types
+
+### Pre-Authorization
+
+Pre-authorization reserves funds on a card without immediately charging it.
+
+<Steps>
+  <Step title="Initiate Pre-Auth">
+    From Transactions menu, tap **PRE AUTHORIZATION**, then select **New Pre-Auth**.
+  </Step>
+  
+  <Step title="Process like purchase">
+    Enter amount and read card as with a normal purchase.
+  </Step>
+  
+  <Step title="Complete or refund later">
+    From Transactions > PRE AUTHORIZATION > Complete:
+    - **Complete Pre-Auth**: Capture the reserved funds (full or partial amount)
+    - **Refund Pre-Auth**: Release the reservation without charging
+  </Step>
+</Steps>
+
+<Note>
+  Pre-authorizations typically expire after 7-30 days depending on the card issuer. Complete them promptly to ensure funds capture.
+</Note>
+
+### Cash Advance
+
+Allows customers to withdraw cash using their debit card.
+
+- Follow the same process as a purchase
+- Ensure you have sufficient cash to disburse
+- Customer receives cash, you receive card payment
+
+### Deposit (Cash)
+
+Deposit cash to a customer's bank account via their card.
+
+- Customer inserts their card
+- You collect cash from customer
+- Funds are deposited to their account
+- Receipt confirms deposit
+
+## Print Type Dialog
+
+When printing receipts, you'll see the Print Type dialog (`DialogPrintTypeBinding` at `TransactionDetailsFragment.kt:58-90`):
+
+- **Customer**: Prints customer copy receipt
+- **Merchant**: Prints merchant copy receipt
+- **Download**: Saves receipt as PDF
+- **Share**: Shares receipt via apps
+- **Download and Share**: Both saves and shares
+- **Cancel**: Closes dialog without action
+
+## Printer Error Handling
+
+If printing fails, the Printer Error dialog appears (`TransactionDetailsFragment.kt:91-103`):
+
+- **Error Message**: Describes what went wrong (e.g., "Printer not connected", "Out of paper")
+- **Send Receipt**: Alternative option to SMS the receipt
+- **Dismiss**: Closes the error dialog
+
+Common printer errors:
+- Printer not connected or powered off
+- Out of thermal paper
+- Paper jam
+- Low battery (for portable printers)
+
+## Transaction Storage
+
+All transactions are stored locally in the device database:
+
+- Enables offline transaction history viewing
+- Supports transaction reprints even without internet
+- Synced with backend server when connection available
+- Automatic retry for failed backend uploads (via background worker)
+
+## Failed Transaction Recovery
+
+NetPOS automatically handles failed transaction uploads:
+
+1. Transaction is saved locally immediately after processing
+2. System attempts to upload to backend server
+3. If upload fails (network issues), transaction is marked for retry
+4. Background worker (`RepushFailedTransactionToBackendWorker`) automatically retries when network is available
+5. You can see retry status in transaction details
+
+<Warning>
+  Even if a transaction shows as "approved" locally, always verify with your bank reconciliation that it reached the backend. Failed uploads are automatically retried, but it's good practice to check.
+</Warning>
+
+## Tips for Transaction Processing
+
+<AccordionGroup>
+  <Accordion title="Verify Amount Before Card Read">
+    Always confirm the amount with the customer before initiating card reading. Amount cannot be changed after card is inserted.
+  </Accordion>
+  
+  <Accordion title="Keep Card Inserted">
+    Instruct customers to keep chip cards inserted until the terminal says "Remove Card". Premature removal causes transaction failure.
+  </Accordion>
+  
+  <Accordion title="Handle Declines Gracefully">
+    If a transaction is declined, explain the decline reason to the customer professionally. Offer alternatives like another card or payment method.
+  </Accordion>
+  
+  <Accordion title="Print Both Copies">
+    For audit purposes, always print and retain the merchant copy. Give the customer copy to the customer.
+  </Accordion>
+  
+  <Accordion title="Network Timeouts">
+    If a transaction times out, check the transaction history before retrying. The transaction may have succeeded despite the timeout.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Process Refunds" icon="rotate-left" href="/guide/refunds-reprints">
+    Learn how to refund transactions and reprint receipts
+  </Card>
+  
+  <Card title="Generate Reports" icon="chart-line" href="/guide/reports">
+    View End-of-Day reports and reconciliation
+  </Card>
+</CardGroup>

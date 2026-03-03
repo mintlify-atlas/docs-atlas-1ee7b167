@@ -1,0 +1,646 @@
+---
+title: API Endpoints
+description: Complete reference for NetPOS REST API endpoints for authentication, transactions, and POS management
+---
+
+The NetPOS REST API provides HTTP endpoints for user authentication, transaction management, terminal configuration, and data retrieval.
+
+## Base URLs
+
+NetPOS uses multiple API base URLs for different services:
+
+| Service | Base URL | Description |
+|---------|----------|-------------|
+| Main API | `https://netpos.netpluspay.com/` | Core POS operations |
+| Bills/Storm | `https://storm.netpluspay.com/` | Bill payments and Storm services |
+| Cash Service | `https://netpos.netpluspay.com/api/cash/` | Cash transaction tracking |
+| Zenith PBT | `https://api.zenith-pbt.netpluspay.com/` | Zenith Pay-by-Transfer |
+| QR Payments | `https://masterpassqr.netpluspay.com/api/v1/` | QR payment processing |
+| SMS Service | `https://sms.netpluspay.com` | SMS notifications |
+
+## Authentication
+
+### App Token
+
+Obtain application-level authentication token:
+
+<CodeGroup>
+```kotlin Kotlin
+import com.google.gson.JsonObject
+import com.woleapp.netpos.network.StormApiClient
+
+val credentials = JsonObject().apply {
+    addProperty("client_id", "your_client_id")
+    addProperty("client_secret", "your_client_secret")
+}
+
+StormApiClient.getBillsInstance()
+    .appToken(credentials)
+    .subscribe { response, error ->
+        response?.let {
+            val token = it.token
+            // Store token for subsequent requests
+        }
+    }
+```
+
+```bash cURL
+curl -X POST https://storm.netpluspay.com/api/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_id": "your_client_id",
+    "client_secret": "your_client_secret"
+  }'
+```
+</CodeGroup>
+
+**Endpoint:** `POST /api/token`
+
+**Request Body:**
+<ParamField body="client_id" type="string" required>
+  Application client ID
+</ParamField>
+<ParamField body="client_secret" type="string" required>
+  Application client secret
+</ParamField>
+
+**Response:**
+<ResponseField name="token" type="string">
+  JWT authentication token
+</ResponseField>
+<ResponseField name="expires_in" type="number">
+  Token expiration time in seconds
+</ResponseField>
+
+### User Authentication
+
+Authenticate a user and obtain user token:
+
+<CodeGroup>
+```kotlin Kotlin
+val credentials = JsonObject().apply {
+    addProperty("username", "user@example.com")
+    addProperty("password", "password123")
+    addProperty("terminal_id", "2058XU23")
+}
+
+StormApiClient.getBillsInstance()
+    .userToken(credentials)
+    .subscribe { response, error ->
+        response?.let {
+            val userToken = it.token
+            val user = it.user
+            // Store user session
+        }
+    }
+```
+
+```bash cURL
+curl -X POST https://storm.netpluspay.com/api/auth \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "user@example.com",
+    "password": "password123",
+    "terminal_id": "2058XU23"
+  }'
+```
+</CodeGroup>
+
+**Endpoint:** `POST /api/auth`
+
+**Request Body:**
+<ParamField body="username" type="string" required>
+  User email or username
+</ParamField>
+<ParamField body="password" type="string" required>
+  User password
+</ParamField>
+<ParamField body="terminal_id" type="string" required>
+  Terminal ID for this session
+</ParamField>
+
+**Response:**
+<ResponseField name="token" type="string">
+  User JWT token
+</ResponseField>
+<ResponseField name="user" type="object">
+  User profile data including terminal_id, business_name, netplus_id
+</ResponseField>
+
+## Transactions
+
+### Log Transaction (Before NIBSS)
+
+Log transaction details before connecting to NIBSS:
+
+<CodeGroup>
+```kotlin Kotlin
+val transactionData = TransactionToLogBeforeConnectingToNibbs(
+    terminalId = "2058XU23",
+    amount = "500000",  // Amount in kobo
+    stan = "000123",
+    rrn = "202112011234567",
+    cardPan = "506066******1234",
+    cardExpiry = "12/25",
+    timestamp = System.currentTimeMillis()
+)
+
+StormApiClient.getStormApiLoginInstance()
+    .logTransactionBeforeConnectingToNibss(transactionData)
+    .subscribe { response, error ->
+        response?.let {
+            val transactionId = it.id
+        }
+    }
+```
+
+```bash cURL
+curl -X POST https://device.netpluspay.com/pos_transaction \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "terminalId": "2058XU23",
+    "amount": "500000",
+    "stan": "000123",
+    "rrn": "202112011234567",
+    "cardPan": "506066******1234",
+    "cardExpiry": "12/25",
+    "timestamp": 1638360000000
+  }'
+```
+</CodeGroup>
+
+**Endpoint:** `POST /pos_transaction`
+
+**Headers:**
+<ParamField header="Authorization" type="string" required>
+  Bearer token from user authentication
+</ParamField>
+
+**Request Body:**
+<ParamField body="terminalId" type="string" required>
+  Terminal identifier
+</ParamField>
+<ParamField body="amount" type="string" required>
+  Transaction amount in kobo (minor units)
+</ParamField>
+<ParamField body="stan" type="string" required>
+  System Trace Audit Number
+</ParamField>
+<ParamField body="rrn" type="string" required>
+  Retrieval Reference Number
+</ParamField>
+<ParamField body="cardPan" type="string">
+  Masked card PAN
+</ParamField>
+<ParamField body="cardExpiry" type="string">
+  Card expiry date (MM/YY)
+</ParamField>
+
+### Update Transaction (After NIBSS)
+
+Update transaction with response from NIBSS:
+
+<CodeGroup>
+```kotlin Kotlin
+val rrn = "202112011234567"
+val updateData = DataToLogAfterConnectingToNibss(
+    responseCode = "00",
+    responseMessage = "Approved",
+    authCode = "123456",
+    isoString = "0200...",
+    responseTime = System.currentTimeMillis()
+)
+
+StormApiClient.getStormApiLoginInstance()
+    .updateLogAfterConnectingToNibss(rrn, updateData)
+    .subscribe { response, error ->
+        response?.let {
+            // Transaction updated
+        }
+    }
+```
+
+```bash cURL
+curl -X PUT https://device.netpluspay.com/pos_transaction/202112011234567 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "responseCode": "00",
+    "responseMessage": "Approved",
+    "authCode": "123456",
+    "isoString": "0200..."
+  }'
+```
+</CodeGroup>
+
+**Endpoint:** `PUT /pos_transaction/{rrn}`
+
+**Path Parameters:**
+<ParamField path="rrn" type="string" required>
+  Retrieval Reference Number from initial transaction log
+</ParamField>
+
+**Request Body:**
+<ParamField body="responseCode" type="string" required>
+  ISO 8583 response code ("00" for approved)
+</ParamField>
+<ParamField body="responseMessage" type="string" required>
+  Human-readable response message
+</ParamField>
+<ParamField body="authCode" type="string">
+  Authorization code from issuer
+</ParamField>
+<ParamField body="isoString" type="string">
+  Full ISO 8583 message for audit
+</ParamField>
+
+### Get Transactions
+
+Retrieve transactions by terminal and date range:
+
+<CodeGroup>
+```kotlin Kotlin
+val terminalId = "2058XU23"
+val from = "2021-12-01 00:00:00"
+val to = "2021-12-31 23:59:59"
+val page = 1
+val pageSize = 50
+
+StormApiClient.getStormApiLoginInstance()
+    .getTransactionsFromNewService(terminalId, from, to, page, pageSize)
+    .subscribe { response, error ->
+        response?.let {
+            val transactions = it.data
+            val totalPages = it.totalPages
+        }
+    }
+```
+
+```bash cURL
+curl -X GET "https://device.netpluspay.com/pos_transactions/terminal/2058XU23/btw/2021-12-01%2000:00:00/2021-12-31%2023:59:59/1/50" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+**Endpoint:** `GET /pos_transactions/terminal/{terminalId}/btw/{from}/{to}/{page}/{pageSize}`
+
+**Path Parameters:**
+<ParamField path="terminalId" type="string" required>
+  Terminal identifier
+</ParamField>
+<ParamField path="from" type="string" required>
+  Start date (format: YYYY-MM-DD HH:mm:ss)
+</ParamField>
+<ParamField path="to" type="string" required>
+  End date (format: YYYY-MM-DD HH:mm:ss)
+</ParamField>
+<ParamField path="page" type="number" required>
+  Page number (1-based)
+</ParamField>
+<ParamField path="pageSize" type="number" required>
+  Number of records per page
+</ParamField>
+
+**Response:**
+<ResponseField name="data" type="array">
+  Array of transaction objects
+</ResponseField>
+<ResponseField name="totalPages" type="number">
+  Total number of pages
+</ResponseField>
+<ResponseField name="currentPage" type="number">
+  Current page number
+</ResponseField>
+
+## Agent Management
+
+### Get Agent Details
+
+<CodeGroup>
+```kotlin Kotlin
+val stormId = "AGT123456"
+
+StormApiClient.getInstance()
+    .getAgentDetails(stormId)
+    .subscribe { user, error ->
+        user?.let {
+            val terminalId = it.terminal_id
+            val businessName = it.business_name
+        }
+    }
+```
+
+```bash cURL
+curl -X GET https://netpos.netpluspay.com/api/agents/AGT123456 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+**Endpoint:** `GET /api/agents/{stormId}`
+
+**Path Parameters:**
+<ParamField path="stormId" type="string" required>
+  Storm/NetPlus agent ID
+</ParamField>
+
+**Response:**
+<ResponseField name="netplus_id" type="string">
+  Agent's NetPlus ID
+</ResponseField>
+<ResponseField name="terminal_id" type="string">
+  Assigned terminal ID
+</ResponseField>
+<ResponseField name="business_name" type="string">
+  Business name
+</ResponseField>
+<ResponseField name="email" type="string">
+  Agent email
+</ResponseField>
+
+## NIP (Bank Transfer)
+
+### Get NIP Notifications
+
+Retrieve NIP transfer notifications:
+
+<CodeGroup>
+```kotlin Kotlin
+val terminalId = "2058XU23"
+val from = "2021-12-01"
+val to = "2021-12-31"
+val clientId = "85522f45-e459-4548-8b20-3a922196c515"
+val accessCode = "a14014e18e2cffc4d74e150ed68a472bd94189db82d374306d5b307dc7620f20"
+
+StormApiClient.getInstance()
+    .getNotifications(terminalId, from, to, clientId, accessCode)
+    .subscribe { notifications, error ->
+        notifications?.let {
+            it.forEach { notification ->
+                val amount = notification.amount
+                val reference = notification.referenceNo
+            }
+        }
+    }
+```
+
+```bash cURL
+curl -X GET "https://netpos.netpluspay.com/api/nip-notifications?terminalId=2058XU23&from=2021-12-01&to=2021-12-31" \
+  -H "X-CLIENT-ID: 85522f45-e459-4548-8b20-3a922196c515" \
+  -H "X-ACCESSCODE: a14014e18e2cffc4d74e150ed68a472bd94189db82d374306d5b307dc7620f20"
+```
+</CodeGroup>
+
+**Endpoint:** `GET /api/nip-notifications`
+
+**Headers:**
+<ParamField header="X-CLIENT-ID" type="string" required>
+  NIP client identifier
+</ParamField>
+<ParamField header="X-ACCESSCODE" type="string" required>
+  NIP access code
+</ParamField>
+
+**Query Parameters:**
+<ParamField query="terminalId" type="string" required>
+  Terminal identifier
+</ParamField>
+<ParamField query="from" type="string">
+  Start date (YYYY-MM-DD)
+</ParamField>
+<ParamField query="to" type="string">
+  End date (YYYY-MM-DD)
+</ParamField>
+<ParamField query="referenceNo" type="string">
+  Specific transaction reference (alternative to date range)
+</ParamField>
+
+### Get Session Code
+
+Generate session code for NIP transfers:
+
+<CodeGroup>
+```kotlin Kotlin
+StormApiClient.getNipInstance()
+    .getSessionCode()
+    .subscribe { sessionCode, error ->
+        sessionCode?.let {
+            val code = it.code
+            val expiresAt = it.expiresAt
+        }
+    }
+```
+
+```bash cURL
+curl -X GET https://storm.netpluspay.com/api/sessionCode \
+  -H "X-CLIENT-ID: YOUR_CLIENT_ID" \
+  -H "X-ACCESSCODE: YOUR_ACCESS_CODE"
+```
+</CodeGroup>
+
+**Endpoint:** `GET /api/sessionCode`
+
+**Response:**
+<ResponseField name="code" type="string">
+  6-digit session code
+</ResponseField>
+<ResponseField name="expiresAt" type="string">
+  Expiration timestamp
+</ResponseField>
+
+## Cash Transactions
+
+### Add Cash Transaction
+
+<CodeGroup>
+```kotlin Kotlin
+val cashTransaction = JsonObject().apply {
+    addProperty("terminalId", "2058XU23")
+    addProperty("amount", 50000)  // In kobo
+    addProperty("type", "CASH_IN")
+    addProperty("reference", "CASH202112011234")
+    addProperty("timestamp", System.currentTimeMillis())
+}
+
+StormApiClient.getCashInstance()
+    .addCashTransaction(cashTransaction)
+    .subscribe { response, error ->
+        response?.let {
+            // Cash transaction logged
+        }
+    }
+```
+
+```bash cURL
+curl -X POST https://netpos.netpluspay.com/api/cash/addTransactions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "terminalId": "2058XU23",
+    "amount": 50000,
+    "type": "CASH_IN",
+    "reference": "CASH202112011234"
+  }'
+```
+</CodeGroup>
+
+**Endpoint:** `POST /addTransactions`
+
+**Request Body:**
+<ParamField body="terminalId" type="string" required>
+  Terminal identifier
+</ParamField>
+<ParamField body="amount" type="number" required>
+  Amount in kobo
+</ParamField>
+<ParamField body="type" type="string" required>
+  Transaction type: CASH_IN or CASH_OUT
+</ParamField>
+<ParamField body="reference" type="string" required>
+  Unique transaction reference
+</ParamField>
+
+## QR Payments
+
+### Pay with QR
+
+<CodeGroup>
+```kotlin Kotlin
+val qrPaymentRequest = PayWithQrRequest(
+    qrData = "scanned_qr_code_data",
+    amount = 500000,  // In kobo
+    terminalId = "2058XU23"
+)
+
+val qrService = Retrofit.Builder()
+    .baseUrl("https://masterpassqr.netpluspay.com/api/v1/")
+    .build()
+    .create(QrPaymentService::class.java)
+
+qrService.payWithQr(qrPaymentRequest)
+    .subscribe { response, error ->
+        response?.let {
+            if (it.isSuccessful) {
+                // Payment successful
+            }
+        }
+    }
+```
+
+```bash cURL
+curl -X POST https://masterpassqr.netpluspay.com/api/v1/contactlessQr \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "qrData": "scanned_qr_code_data",
+    "amount": 500000,
+    "terminalId": "2058XU23"
+  }'
+```
+</CodeGroup>
+
+**Endpoint:** `POST /contactlessQr`
+
+**Request Body:**
+<ParamField body="qrData" type="string" required>
+  Scanned QR code data
+</ParamField>
+<ParamField body="amount" type="number" required>
+  Payment amount in kobo
+</ParamField>
+<ParamField body="terminalId" type="string" required>
+  Terminal identifier
+</ParamField>
+
+## Password Management
+
+### Reset Password
+
+<CodeGroup>
+```kotlin Kotlin
+val resetPayload = JsonObject().apply {
+    addProperty("email", "user@example.com")
+    addProperty("terminal_id", "2058XU23")
+}
+
+StormApiClient.getBillsInstance()
+    .passwordReset(resetPayload)
+    .subscribe { response, error ->
+        response?.let {
+            // Password reset email sent
+        }
+    }
+```
+
+```bash cURL
+curl -X POST https://storm.netpluspay.com/api/passwordReset \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "terminal_id": "2058XU23"
+  }'
+```
+</CodeGroup>
+
+**Endpoint:** `POST /api/passwordReset`
+
+**Request Body:**
+<ParamField body="email" type="string" required>
+  User email address
+</ParamField>
+<ParamField body="terminal_id" type="string">
+  Terminal ID (optional)
+</ParamField>
+
+## API Client Configuration
+
+NetPOS uses Retrofit with custom interceptors:
+
+```kotlin StormApiClient.kt
+private fun getOkHttpClient() =
+    OkHttpClient.Builder()
+        .addInterceptor(TokenInterceptor())
+        .addInterceptor(HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        })
+        .connectTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .build()
+
+class TokenInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        var request = chain.request()
+        val headersInReq = request.headers
+        
+        if (headersInReq["Authorization"].isNullOrEmpty()) {
+            Prefs.getString(PREF_USER_TOKEN, null)?.let {
+                request = request.newBuilder()
+                    .addHeader("Authorization", "Bearer $it")
+                    .build()
+            }
+        }
+        
+        return chain.proceed(request)
+    }
+}
+```
+
+## Error Handling
+
+API errors follow standard HTTP status codes:
+
+| Status Code | Meaning |
+|-------------|----------|
+| 200 | Success |
+| 400 | Bad Request - Invalid parameters |
+| 401 | Unauthorized - Invalid or expired token |
+| 403 | Forbidden - Insufficient permissions |
+| 404 | Not Found - Resource doesn't exist |
+| 500 | Internal Server Error |
+
+## Next Steps
+
+<Card title="Webhooks" icon="webhook" href="/integration/webhooks">
+  Set up webhook notifications for real-time events
+</Card>

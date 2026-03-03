@@ -1,0 +1,541 @@
+---
+title: End-of-Day Reports
+description: Generate, view, print, and reconcile End-of-Day transaction reports in NetPOS for accurate business accounting
+---
+
+End-of-Day (EOD) reports provide a comprehensive summary of all transactions processed on your terminal for a specific day. These reports are essential for daily reconciliation, accounting, and business management.
+
+## What is an End-of-Day Report?
+
+An EOD report summarizes all transactions processed through your NetPOS terminal within a 24-hour period, typically from midnight to midnight.
+
+### Report Contents
+
+<CardGroup cols={2}>
+  <Card title="Transaction Counts" icon="hashtag">
+    Total, approved, and declined transaction counts
+  </Card>
+  
+  <Card title="Transaction Amounts" icon="dollar-sign">
+    Sum of all approved transaction amounts
+  </Card>
+  
+  <Card title="Transaction List" icon="list">
+    Detailed list of all transactions for the day
+  </Card>
+  
+  <Card title="Settlement Info" icon="building-columns">
+    Information for bank reconciliation and settlement
+  </Card>
+</CardGroup>
+
+## Accessing End-of-Day Reports
+
+EOD reports can be accessed from the Dashboard.
+
+<Steps>
+  <Step title="Navigate to EOD">
+    From the Dashboard, tap the **View EOD** tile (represented by a calendar/print icon).
+    
+    This is implemented at `DashboardFragment.kt:249, 275, 400` and calls `showCalendarDialog()`.
+  </Step>
+  
+  <Step title="Select date">
+    A date picker dialog appears allowing you to select which day to generate the report for:
+    
+    <Tabs>
+      <Tab title="Today">
+        Select today's date to view current day's transactions.
+        
+        Most common use case for end-of-business reconciliation.
+      </Tab>
+      
+      <Tab title="Previous Days">
+        Select any past date to view historical transaction reports.
+        
+        Useful for:
+        - Reviewing previous day's transactions
+        - Checking transactions from specific dates
+        - Audit and accounting purposes
+        - Dispute resolution
+      </Tab>
+    </Tabs>
+    
+    The calendar defaults to the current date but allows navigation to any past date.
+  </Step>
+  
+  <Step title="Wait for data fetch">
+    After selecting a date, NetPOS fetches transactions:
+    
+    A progress dialog appears showing "Please wait..." with a Cancel button.
+    
+    <Accordion title="Data Fetch Process">
+      NetPOS uses a multi-source approach for reliability:
+      
+      1. **Primary**: Fetch from backend server via API (`getTransactionsFromNewService()`)
+      2. **Fallback**: Retrieve from local device database if server unavailable
+      3. **Retry**: Automatic retry up to 2 times on network errors
+      4. **Error Handling**: Graceful degradation to local data
+      
+      This ensures you can generate EOD reports even with intermittent connectivity.
+    </Accordion>
+    
+    The fetch process is implemented at `DashboardFragment.kt:440-523` and `DashboardFragment.kt:718-824`.
+  </Step>
+  
+  <Step title="View report summary">
+    The EOD report appears in a bottom sheet dialog showing the summary.
+  </Step>
+</Steps>
+
+## Report Summary Screen
+
+The EOD summary bottom sheet (`LayoutPrintEndOfDayBinding` at `DashboardFragment.kt:600-680`) displays:
+
+### Key Metrics
+
+<ResponseField name="Total Transactions" type="number">
+  Total count of all transactions (approved + declined) for the selected date.
+  
+  Example: "Total Transactions: 45"
+</ResponseField>
+
+<ResponseField name="Approved Count" type="number">
+  Number of transactions with response code "00" (successful).
+  
+  Calculated by filtering transactions where `responseCode == "00"`.
+</ResponseField>
+
+<ResponseField name="Declined Count" type="number">
+  Number of transactions that were not approved (response code != "00").
+  
+  Includes all failure reasons: insufficient funds, incorrect PIN, issuer unavailable, etc.
+</ResponseField>
+
+<ResponseField name="Total Transaction Amount" type="currency">
+  Sum of all approved transaction amounts in Naira.
+  
+  Calculated as: `approvedList.sumOf { it.amount }.div(100).formatCurrencyAmount()`
+  
+  Only approved transactions are included in this total.
+</ResponseField>
+
+### Filter Options
+
+The report summary includes chip group filters (`DashboardFragment.kt:623-625`):
+
+<Tabs>
+  <Tab title="All Transactions">
+    Default view showing metrics for all transactions (approved + declined).
+    
+    Select this when you want complete transaction visibility.
+  </Tab>
+  
+  <Tab title="Print Approved">
+    Filters to show only approved transactions (response code "00").
+    
+    Use for:
+    - Settlement reconciliation
+    - Revenue calculation
+    - Accounting purposes
+  </Tab>
+  
+  <Tab title="Print Declined">
+    Filters to show only declined transactions.
+    
+    Use for:
+    - Analyzing failure patterns
+    - Customer service follow-up
+    - Identifying terminal or connectivity issues
+  </Tab>
+</Tabs>
+
+## Printing EOD Reports
+
+From the EOD summary screen, you can print transaction reports.
+
+<Steps>
+  <Step title="Select filter">
+    Choose which transactions to print:
+    - All Transactions
+    - Approved Only
+    - Declined Only
+    
+    Use the chip group at the top of the summary dialog.
+  </Step>
+  
+  <Step title="Tap Print button">
+    Press the **PRINT** button on the EOD summary dialog.
+    
+    If no transactions exist for the selected filter, you'll see: "No transactions to print".
+  </Step>
+  
+  <Step title="Wait for printing">
+    NetPOS sends the transaction list to the thermal printer.
+    
+    The printing process:
+    1. Formats transaction data for thermal receipt
+    2. Sends print commands via Bluetooth/USB to printer
+    3. Prints header with date and report type
+    4. Prints each transaction in the filtered list
+    5. Prints summary totals at the end
+    
+    This is handled by `printEndOfDay()` extension function at `DashboardFragment.kt:636`.
+  </Step>
+  
+  <Step title="Receipt produced">
+    The thermal printer produces an EOD report receipt containing:
+    
+    - **Header**: "END OF DAY REPORT" with date
+    - **Terminal Info**: Terminal ID, Merchant ID, Business Name
+    - **Transaction List**: Each transaction with:
+      - Masked PAN
+      - Amount
+      - Status (Approved/Declined)
+      - Response code
+      - Time
+    - **Summary**: Total count, approved count, declined count, total amount
+    - **Footer**: Report generated timestamp
+  </Step>
+</Steps>
+
+### Printing Error Handling
+
+If printing fails:
+
+- Toast message shows the error (e.g., "Printer not connected")
+- Error details are logged for troubleshooting
+- You can retry printing after resolving the issue
+- Alternative: View detailed transaction list and export/share digitally
+
+## Viewing Transaction Details
+
+From the EOD summary, you can view the full transaction list.
+
+<Steps>
+  <Step title="Tap View button">
+    On the EOD summary dialog, tap the **VIEW** button or the transactions count area.
+    
+    This is handled at `DashboardFragment.kt:661-675`.
+  </Step>
+  
+  <Step title="Transaction History opens">
+    The Transaction History screen opens with the EOD transaction list.
+    
+    The action is set to `HISTORY_ACTION_EOD` which:
+    - Hides the History/Search tabs (not needed for EOD view)
+    - Uses `EODAdapter` instead of regular `TransactionsAdapter`
+    - Shows all transactions for the selected date
+  </Step>
+  
+  <Step title="Review transactions">
+    Scroll through the transaction list. Each transaction shows:
+    - Masked card number (e.g., 506099******1234)
+    - Transaction amount
+    - Status indicator (green for approved, red for declined)
+    - Transaction date and time
+    - Transaction type
+  </Step>
+  
+  <Step title="View transaction details">
+    Tap any transaction to open full transaction details including:
+    - Complete transaction information
+    - Response codes and messages
+    - RRN and authorization codes
+    - Options to reprint receipt
+  </Step>
+</Steps>
+
+<Note>
+  The EOD transaction list is marked with a special identifier (`PDF_REPRINT_IDENTIFIER` appended to `localDate_13` at `DashboardFragment.kt:666`) to distinguish EOD reprints from regular reprints.
+</Note>
+
+## Date Range Selection
+
+The EOD report uses a precise 24-hour window for transaction filtering.
+
+### Time Calculation
+
+When you select a date, NetPOS calculates:
+
+1. **Beginning of Day**: Selected date at 00:00:00 (midnight)
+   - Calculated using `getBeginningOfDay(timestamp)` at `DashboardFragment.kt:442, 720`
+
+2. **End of Day**: Selected date at 23:59:59
+   - Calculated as beginning + 86400 seconds (24 hours)
+   - `Timestamp.from(Instant.ofEpochMilli(be).plusSeconds(86400)).time` at `DashboardFragment.kt:443, 721`
+
+3. **Date Formatting**: Dates are formatted for both local database and server API
+   - Local format: Milliseconds timestamp
+   - Server format: "dd:MM:yyyy hh:mm:ss" converted to server-expected format
+   - Implemented at `DashboardFragment.kt:444-461, 722-739`
+
+This ensures all transactions from midnight to midnight are included in the report.
+
+## Data Source Priority
+
+NetPOS uses a smart data fetching strategy for EOD reports:
+
+### Backend Server (Primary)
+
+```kotlin
+stormApiService.getTransactionsFromNewService(
+    terminalId,
+    from,
+    to,
+    page,
+    pageSize
+)
+```
+
+Fetches from the Storm API server:
+- Most up-to-date transaction data
+- Includes transactions synced from other sources
+- Requires network connectivity
+- Paginated results (up to 1000 transactions per request)
+
+### Local Database (Fallback)
+
+```kotlin
+getEndOfDayLocal(from, to)
+```
+
+Retrieves from device SQLite database:
+- Available offline
+- Contains all locally processed transactions
+- May not include transactions from other terminals (for multi-terminal merchants)
+- Immediate response (no network delay)
+
+### Automatic Fallback Logic
+
+Implemented at `DashboardFragment.kt:490-495` and `DashboardFragment.kt:767-786`:
+
+1. Try backend server first
+2. If server returns empty results, try local database
+3. On network error, automatically fall back to local database
+4. If both sources have data, prefer backend (more authoritative)
+
+<Warning>
+  If you recently processed transactions but they don't appear in the EOD report from the server, this indicates the transactions haven't synced to the backend yet. Check your network connectivity and wait for background sync to complete.
+</Warning>
+
+## Report Reconciliation
+
+Use EOD reports for daily business reconciliation.
+
+### Reconciliation Process
+
+<Steps>
+  <Step title="Generate EOD at close of business">
+    At the end of your business day, generate the EOD report for today's date.
+  </Step>
+  
+  <Step title="Print approved transactions report">
+    Filter to "Print Approved" and print the report. This shows all successful transactions that will be settled.
+  </Step>
+  
+  <Step title="Verify totals">
+    Check that:
+    - **Total approved amount** matches your expected revenue
+    - **Transaction count** aligns with your records
+    - All transactions are legitimate and authorized
+  </Step>
+  
+  <Step title="Review declined transactions">
+    Print the declined transactions report and review:
+    - Patterns in decline reasons
+    - Any transactions that should have succeeded but didn't
+    - Customer service follow-ups needed
+  </Step>
+  
+  <Step title="Compare with bank settlement">
+    Your bank will settle the approved transactions (typically next business day):
+    - Settlement amount should match EOD approved total
+    - Account for any fees or chargebacks
+    - Investigate any discrepancies
+  </Step>
+  
+  <Step title="Archive report">
+    Keep printed or digital copies of EOD reports for:
+    - Accounting records
+    - Audit trail
+    - Tax reporting
+    - Dispute resolution
+    
+    Recommended retention: Minimum 7 years for tax purposes
+  </Step>
+</Steps>
+
+### Common Reconciliation Issues
+
+<AccordionGroup>
+  <Accordion title="EOD total doesn't match bank settlement">
+    **Causes**:
+    - Transactions still pending settlement
+    - Chargebacks or refunds not yet processed
+    - Transactions from previous day settled today
+    - Processing fees deducted
+    
+    **Resolution**:
+    - Check settlement date vs transaction date
+    - Review refunds processed during the period
+    - Contact payment processor for settlement details
+    - Compare transaction RRNs with settlement report
+  </Accordion>
+  
+  <Accordion title="Missing transactions in EOD report">
+    **Causes**:
+    - Transactions processed after generating report
+    - Transactions not synced to backend
+    - Date filter excludes edge cases (around midnight)
+    
+    **Resolution**:
+    - Regenerate report to include latest transactions
+    - Check local database for unsynced transactions
+    - Verify transaction timestamps
+    - Ensure background sync worker completed
+  </Accordion>
+  
+  <Accordion title="Declined transactions in settlement">
+    **Issue**: Declined transactions should not be settled
+    
+    **Investigation**:
+    - Verify response codes in EOD report
+    - Check if transaction was reversed and retried as approved
+    - Contact processor if declined transaction was charged
+  </Accordion>
+  
+  <Accordion title="Duplicate transactions in report">
+    **Causes**:
+    - Customer retry after timeout (created separate transactions)
+    - Technical issue in transaction logging
+    
+    **Resolution**:
+    - Check RRNs - duplicates will have different RRNs
+    - Review timestamps - true duplicates will be milliseconds apart
+    - Verify with customer if both were charged
+    - Refund if necessary
+  </Accordion>
+</AccordionGroup>
+
+## Amount Formatting
+
+All amounts in EOD reports are handled in kobo (smallest currency unit) and converted for display:
+
+- **Internal storage**: Amount in kobo (e.g., 500000 for ₦5,000.00)
+- **Display**: Amount divided by 100 and formatted with currency symbol
+- **Calculation**: Sum performed on kobo values, then converted
+
+Example from `DashboardFragment.kt:611`:
+```kotlin
+approvedList.sumOf { it.amount }.div(100).formatCurrencyAmount()
+```
+
+This ensures:
+- No floating-point rounding errors
+- Accurate penny-level accounting
+- Consistent amount representation
+
+## No Transactions Handling
+
+If no transactions exist for the selected date:
+
+- EOD summary shows all counts as 0
+- Total amount shows ₦0.00
+- Print button shows toast: "No transactions to print"
+- View button shows toast: "No transactions to view"
+
+This is normal for:
+- Days when terminal was not used
+- New terminals without transaction history
+- Future dates (obviously)
+
+## Best Practices for EOD Reports
+
+<CardGroup cols={2}>
+  <Card title="Daily Routine" icon="calendar-check">
+    Generate EOD reports at the same time each day (e.g., close of business) for consistent accounting.
+  </Card>
+  
+  <Card title="Print and Archive" icon="box-archive">
+    Print physical copies of EOD reports and store securely for audit trail and compliance.
+  </Card>
+  
+  <Card title="Verify Before Closing" icon="circle-check">
+    Review EOD totals before closing your till to catch any discrepancies while fresh.
+  </Card>
+  
+  <Card title="Investigate Anomalies" icon="magnifying-glass">
+    If EOD totals seem unusual, investigate immediately rather than waiting for bank settlement.
+  </Card>
+</CardGroup>
+
+## Tips and Tricks
+
+<AccordionGroup>
+  <Accordion title="Quick Current Day Report">
+    Simply tap View EOD and accept the default (today's) date for fastest access to current day's report.
+  </Accordion>
+  
+  <Accordion title="Weekly Summary">
+    Generate EOD reports for each day of the week and sum the approved totals for weekly revenue tracking.
+  </Accordion>
+  
+  <Accordion title="Month-End Reporting">
+    Run EOD reports for all days in the month to prepare monthly financial statements and tax filings.
+  </Accordion>
+  
+  <Accordion title="Offline Reconciliation">
+    If internet is down, you can still generate EOD reports from local database. Sync to server when connection restored.
+  </Accordion>
+  
+  <Accordion title="Dispute Resolution">
+    When customers dispute charges, use EOD reports to quickly locate and verify the transaction details.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### EOD Report Not Loading
+
+1. Check internet connection for server fetch
+2. Verify date selected is not in the future
+3. Ensure terminal ID is configured correctly
+4. Check local database has transactions for that date
+
+### Printer Won't Print EOD
+
+1. Verify printer is connected and powered
+2. Check thermal paper is loaded
+3. Ensure printer battery is charged
+4. Test with a single transaction reprint first
+
+### EOD Totals Seem Wrong
+
+1. Verify the date selected is correct
+2. Check you're filtering approved transactions only for revenue
+3. Review transaction list for any unexpected entries
+4. Compare backend vs local database results
+
+### Can't Cancel Data Fetch
+
+If the progress dialog Cancel button doesn't work:
+- Wait for fetch timeout (typically 30 seconds)
+- Check network connectivity
+- Restart NetPOS app if completely stuck
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Back to Dashboard" icon="grid-2" href="/guide/dashboard">
+    Return to Dashboard overview
+  </Card>
+  
+  <Card title="Transaction Processing" icon="credit-card" href="/guide/transactions">
+    Learn about processing transactions
+  </Card>
+  
+  <Card title="Refunds & Reprints" icon="rotate-left" href="/guide/refunds-reprints">
+    Process refunds and reprint receipts
+  </Card>
+</CardGroup>
